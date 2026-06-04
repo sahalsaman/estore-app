@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShoppingCart, Store, ArrowLeft } from "lucide-react";
+import { ShoppingCart, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCartForVendor } from "@/actions/orders";
 import { resolveStoreBySlug } from "@/lib/store-resolver";

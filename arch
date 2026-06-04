@@ -1,0 +1,285 @@
+Build a modern responsive wholesale ecommerce web application using Next.js 15, TypeScript, Tailwind CSS, Shadcn UI, MongoDB and Server Actions.
+
+Application Name:
+WholesaleHub
+
+Target Users:
+1. Admin
+2. Vendor (Wholesale shop / Dealer / Distributor)
+3. Buyer (Retail shop / Normal customer)
+
+====================================================
+CORE REQUIREMENTS
+====================================================
+
+The application should be:
+- Very simple UI
+- Mobile responsive
+- Fast loading
+- Easy for non-technical wholesalers
+- Dashboard based
+- Clean modern design
+- Authentication based role system
+
+Use:
+- Next.js App Router
+- TypeScript
+- MongoDB + Mongoose
+- NextAuth/Auth.js authentication
+- Tailwind CSS
+- Shadcn UI
+- React Hook Form + Zod validation
+- TanStack Table
+- Recharts for analytics
+- Server Actions where possible
+
+====================================================
+ROLES & FEATURES
+====================================================
+
+----------------------------------------------------
+1. ADMIN PANEL
+----------------------------------------------------
+
+Admin login
+
+Admin Dashboard:
+- Total Businesses
+- Total Vendors
+- Total Buyers
+
+Business Management:
+- Business list page
+- Business detail page
+- Vendor count
+- Buyer count
+- Business status
+- Created date
+
+Vendor Management:
+- Vendor list
+- Vendor detail page
+- Vendor products
+- Enable/disable vendor
+
+Buyer Management:
+- Buyer list
+- Buyer detail page
+
+
+
+====================================================
+2. VENDOR PANEL
+====================================================
+
+Vendor = wholesale shop / dealer
+
+Vendor Features:
+- Login/Register
+- Vendor profile
+- Shop details
+- Google Sheet integration settings
+
+Vendor Dashboard:
+- Total products
+- Total buyers
+
+Product Management:
+- Product list page
+- Add product
+- Edit product
+- Delete product
+- Product image upload
+- Product stock
+- Product whosale pricing
+- Product pricing
+- Product category
+- Product status
+
+Buyer Management:
+- Buyer list
+- Buyer details
+- Order history
+
+====================================================
+3. BUYER PANEL
+====================================================
+
+Buyer = retail shop or normal customer
+
+Buyer Features:
+- Signup/Login (use mobile number - not need verification)
+- Browse products
+- Search products
+- Filter by category
+- View product details
+- Add to cart
+- Place order
+
+
+====================================================
+ORDER FLOW
+====================================================
+
+Buyer places order
+→ Order automatically added to Vendor Google Sheet
+
+====================================================
+GOOGLE SHEET INTEGRATION
+====================================================
+
+IMPORTANT:
+Each vendor should have separate Google Sheet integration.
+
+Vendor Settings:
+- Google Sheet ID
+- Google Service Account Credentials
+- Enable/Disable sync
+
+When order placed:
+Automatically append order data into vendor’s Google Sheet.
+
+Sheet Columns:
+- Order ID
+- Date
+- Buyer Name
+- Buyer Phone
+- Product Names
+- Quantity
+- Total Amount
+- Payment Status
+- Order Status
+
+Use:
+- Google Sheets API
+- googleapis npm package
+
+Create reusable utility:
+- appendOrderToGoogleSheet()
+
+====================================================
+DATABASE SCHEMA
+====================================================
+
+Create MongoDB schemas for:
+
+User
+- name
+- email
+- password
+- role
+- businessId
+
+Business
+- name
+- logo
+- address
+- phone
+- ownerId
+
+Vendor
+- userId
+- businessId
+- googleSheetId
+- googleCredentials
+- status
+
+Buyer
+- userId
+- address
+
+Product
+- vendorId
+- businessId
+- name
+- description
+- price
+- stock
+- images
+- category
+- status
+
+
+====================================================
+UI REQUIREMENTS
+====================================================
+
+Design Style:
+- Minimal
+- Modern cards
+- Dashboard analytics
+- Sidebar navigation
+- Responsive tables
+- Mobile friendly
+
+Pages:
+- Beautiful dashboard
+- Product cards
+- Order tables
+- Analytics charts
+- Empty states
+- Loading skeletons
+
+Add:
+- Toast notifications
+- Confirmation modals
+- Search & filters
+- Pagination
+
+====================================================
+TECHNICAL FEATURES
+====================================================
+
+- JWT/Auth.js authentication
+- Role-based access
+- Secure APIs
+- Server-side validation
+- Image upload
+- SEO friendly
+- API route protection
+- Error handling
+- Reusable components
+
+====================================================
+BONUS FEATURES
+====================================================
+
+Optional:
+- WhatsApp order notification
+- Invoice PDF
+- Excel export
+- Product bulk upload
+- Multi-language support
+- Dark mode
+- PWA support
+
+====================================================
+FOLDER STRUCTURE
+====================================================
+
+Generate proper scalable folder structure:
+- app/
+- components/
+- lib/
+- models/
+- actions/
+- hooks/
+- services/
+- types/
+
+====================================================
+OUTPUT REQUIREMENT
+====================================================
+
+Generate:
+1. Complete project structure
+2. Database schemas
+3. API architecture
+4. Authentication flow
+5. Dashboard UI
+6. Product CRUD
+8. Google Sheet integration
+9. Responsive pages
+10. Clean reusable code
+
+Code should be production-ready and scalable.

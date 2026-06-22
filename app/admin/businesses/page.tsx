@@ -7,18 +7,18 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Building2 } from "lucide-react";
 import { connectDB } from "@/lib/db";
 import { Business } from "@/models/Business";
-import { Vendor } from "@/models/Vendor";
+import { User } from "@/models/User";
 import { formatDate } from "@/lib/utils";
 
 async function getBusinesses() {
   await connectDB();
-  const businesses = await Business.find().sort({ createdAt: -1 }).lean();
+  const businesses = await Business.find({ role: "seller" }).sort({ createdAt: -1 }).lean();
   const result = await Promise.all(
     businesses.map(async (b) => ({
       ...b,
       _id: b._id.toString(),
       ownerId: b.ownerId.toString(),
-      vendorCount: await Vendor.countDocuments({ businessId: b._id }),
+      vendorCount: await User.countDocuments({ businessId: b._id, role: "vendor" }),
     }))
   );
   return result;

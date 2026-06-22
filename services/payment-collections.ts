@@ -50,9 +50,9 @@ function toDTO(d: IPaymentCollection): PaymentCollectionDTO {
 }
 
 export const listPaymentCollections = cache(
-  async (vendorId: Types.ObjectId | string): Promise<PaymentCollectionDTO[]> => {
+  async (businessId: Types.ObjectId | string): Promise<PaymentCollectionDTO[]> => {
     await connectDB();
-    const docs = await PaymentCollection.find({ vendorId })
+    const docs = await PaymentCollection.find({ businessId })
       .sort({ collectedAt: -1, createdAt: -1 })
       .lean<IPaymentCollection[]>();
     return docs.map(toDTO);
@@ -60,35 +60,34 @@ export const listPaymentCollections = cache(
 );
 
 export async function listCollectionsForBuyer(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   buyerPhone: string
 ): Promise<PaymentCollectionDTO[]> {
   if (!buyerPhone) return [];
   await connectDB();
-  const docs = await PaymentCollection.find({ vendorId, buyerPhone })
+  const docs = await PaymentCollection.find({ businessId, buyerPhone })
     .sort({ collectedAt: -1, createdAt: -1 })
     .lean<IPaymentCollection[]>();
   return docs.map(toDTO);
 }
 
 export async function getPaymentCollection(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   id: string
 ): Promise<PaymentCollectionDTO | null> {
   if (!mongoose.isValidObjectId(id)) return null;
   await connectDB();
-  const doc = await PaymentCollection.findOne({ _id: id, vendorId }).lean<IPaymentCollection>();
+  const doc = await PaymentCollection.findOne({ _id: id, businessId }).lean<IPaymentCollection>();
   return doc ? toDTO(doc) : null;
 }
 
 export async function createPaymentCollection(
-  scope: { vendorId: Types.ObjectId | string; businessId: Types.ObjectId | string },
+  scope: { businessId: Types.ObjectId | string },
   input: PaymentCollectionInput
 ): Promise<{ ok: true; collection: PaymentCollectionDTO } | { ok: false; reason: string }> {
   await connectDB();
   try {
     const doc = await PaymentCollection.create({
-      vendorId: scope.vendorId,
       businessId: scope.businessId,
       buyerId: input.buyerId || null,
       buyerName: input.buyerName,
@@ -106,14 +105,14 @@ export async function createPaymentCollection(
 }
 
 export async function updatePaymentCollection(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   id: string,
   input: PaymentCollectionInput
 ): Promise<{ ok: true; collection: PaymentCollectionDTO } | { ok: false; reason: string }> {
   if (!mongoose.isValidObjectId(id)) return { ok: false, reason: "Invalid id" };
   await connectDB();
   const doc = await PaymentCollection.findOneAndUpdate(
-    { _id: id, vendorId },
+    { _id: id, businessId },
     {
       $set: {
         buyerId: input.buyerId || null,
@@ -133,12 +132,12 @@ export async function updatePaymentCollection(
 }
 
 export async function deletePaymentCollection(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   id: string
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (!mongoose.isValidObjectId(id)) return { ok: false, reason: "Invalid id" };
   await connectDB();
-  const res = await PaymentCollection.deleteOne({ _id: id, vendorId });
+  const res = await PaymentCollection.deleteOne({ _id: id, businessId });
   if (res.deletedCount === 0) return { ok: false, reason: "Not found" };
   return { ok: true };
 }

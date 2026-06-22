@@ -52,14 +52,18 @@ type Selection = { productId: string; variantId: string | null; quantity: number
 export function AddOrderDialog({
   buyers,
   products,
+  defaultBuyerPhone,
+  trigger,
 }: {
   buyers: BuyerOption[];
   products: ProductOption[];
+  defaultBuyerPhone?: string;
+  trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [buyerPhone, setBuyerPhone] = useState("");
+  const [buyerPhone, setBuyerPhone] = useState(defaultBuyerPhone ?? "");
   const [selected, setSelected] = useState<Record<string, Selection>>({});
   const [q, setQ] = useState("");
 
@@ -106,7 +110,7 @@ export function AddOrderDialog({
   const selectedCount = Object.keys(selected).length;
 
   const reset = () => {
-    setBuyerPhone("");
+    setBuyerPhone(defaultBuyerPhone ?? "");
     setSelected({});
     setQ("");
   };
@@ -167,9 +171,11 @@ export function AddOrderDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="brand">
-          <Plus className="h-4 w-4" /> Add order
-        </Button>
+        {trigger ?? (
+          <Button variant="brand">
+            <Plus className="h-4 w-4" /> Add order
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>

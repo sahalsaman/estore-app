@@ -3,16 +3,15 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { connectDB } from "@/lib/db";
 import { Business } from "@/models/Business";
-import { Vendor } from "@/models/Vendor";
-import { Buyer } from "@/models/Buyer";
+import { User } from "@/models/User";
 import { AdminChart } from "./admin-chart";
 
 async function getCounts() {
   await connectDB();
   const [businesses, vendors, buyers] = await Promise.all([
-    Business.countDocuments(),
-    Vendor.countDocuments(),
-    Buyer.countDocuments(),
+    Business.countDocuments({ role: "seller" }),
+    User.countDocuments({ role: "vendor" }),
+    User.countDocuments({ role: "buyer" }),
   ]);
   return { businesses, vendors, buyers };
 }
@@ -21,8 +20,8 @@ async function getVendorGrowth() {
   await connectDB();
   const since = new Date();
   since.setDate(since.getDate() - 29);
-  const rows = await Vendor.aggregate<{ _id: string; count: number }>([
-    { $match: { createdAt: { $gte: since } } },
+  const rows = await User.aggregate<{ _id: string; count: number }>([
+    { $match: { role: "vendor", createdAt: { $gte: since } } },
     {
       $group: {
         _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },

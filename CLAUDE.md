@@ -10,7 +10,7 @@ A multi-tenant B2B storefront. Vendors (wholesalers / dealers) get a public per-
 - **vendor** — runs one Business. Manages their own products, orders, payment collections, buyer invites. Has a public storefront at `/store/[slug]`.
 - **buyer** — anonymous-ish. Identified by mobile number. Created (or upserted) at checkout from name + phone. No password. No login flow for buyers.
 
-A `User` has a `role`. Vendors also have a `Vendor` row linking them to a `Business`; buyers also have a `Buyer` row holding their address.
+A `User` has a `role`. There are **no `Vendor` or `Buyer` tables** (both were removed) — everything hangs off `User` + `Business`. A `Business` has a `role: "seller" | "buyer"`: a vendor owns a seller Business (their shop); a buyer owns a buyer Business (holds their address profile, slug auto-generated from phone, never browsable as a storefront). `Business.ownerId` is the owning User; `Business.status` is active/disabled; per-team-member active/disabled lives on `User.status`. The tenant id used to scope everything is the **seller `Business._id`**.
 
 ## Stack
 
@@ -45,29 +45,27 @@ proxy.ts                          — middleware (see note above)
 
 | Model | Purpose |
 | --- | --- |
-| `User` | Login identity. `role` is `admin` / `vendor` / `buyer`. Phone or email unique (sparse). |
-| `Business` | A vendor's shop. Has a unique URL `slug` (used at `/store/[slug]`). |
-| `Vendor` | Joins a User (owner) to a Business. Has `status` (active/disabled). |
-| `Buyer` | Profile row for buyer Users — address only. |
-| `Product` | Scoped by `vendorId` + `businessId`. Has MRP (`price`), `wholesalePrice`, `stock`, `status`. |
-| `Order` | Embedded items `[{ productId, name, price, quantity }]` + `totalQuantity`, `totalAmount`, `paymentStatus`, `orderStatus`, `buyerId?`, denormalized `buyerName`/`buyerPhone`. |
-| `PaymentCollection` | Vendor-recorded payment from a buyer. No order link by design — just amount + method + date + reference. |
-| `BuyerInvite` | Vendor invites a buyer manually. Unique on `(vendorId, buyerPhone)`. Used to surface "Invited but never ordered" buyers in the vendor's list. |
+| `User` | Login identity. `role` is `admin` / `vendor` / `buyer`. `status` (active/disabled) for per-team-member disable. `businessId` links to the User's Business. Phone or email unique (sparse). |
+| `Business` | A User's entity, distinguished by `role: "seller" \| "buyer"`. Seller = a shop with a unique URL `slug` (used at `/store/[slug]`). Buyer = a buyer's address profile (slug auto-generated from phone, never browsable). `ownerId`, `status`. **This is the tenant — everything scopes by `businessId` (the seller's).** |
+| `Product` | Scoped by `businessId`. Has MRP (`price`), `wholesalePrice`, `stock`, `status`. |
+| `Order` | Scoped by `businessId`. Embedded items `[{ productId, name, price, quantity }]` + `totalQuantity`, `totalAmount`, `paymentStatus`, `orderStatus`, `buyerId?`, denormalized `buyerName`/`buyerPhone`. |
+| `PaymentCollection` | Scoped by `businessId`. Vendor-recorded payment from a buyer. No order link by design — just amount + method + date + reference. |
+| `BuyerInvite` | Scoped by `businessId`. Vendor invites a buyer manually. Unique on `(businessId, buyerPhone)`. Surfaces "Invited but never ordered" buyers. |
 
 **Denormalization:** Orders and PaymentCollections store `buyerName` and `buyerPhone` directly. The phone is the stable identifier — the buyer's display name on a historical record stays as it was at write time.
 
-## The vendor-scoping rule (security-critical)
+## The business-scoping rule (security-critical)
 
-Every service function that touches `Product`, `Order`, `PaymentCollection`, or `BuyerInvite` **must include `vendorId` in the query**. Never trust a path param as the only filter. Pattern in actions:
+Every service function that touches `Product`, `Order`, `PaymentCollection`, or `BuyerInvite` **must include `businessId` in the query**. Never trust a path param as the only filter. Pattern in actions:
 
 ```ts
-const session = await requireRole("vendor");
+const businessId = await requireVendorBusinessId(); // lib/dal.ts → session.businessId (string | null)
+if (!businessId) return { error: "No business linked" };
 await connectDB();
-const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-// use vendor._id to scope every subsequent query/update
+// use businessId to scope every subsequent query/update
 ```
 
-The session's `userId` is the trust root. `Vendor._id` is derived from it on every request. Do not store vendor id in a cookie / form field as authority.
+The signed session is the trust root: `requireVendorBusinessId()` calls `requireRole("vendor")` and returns the session's `businessId` (the seller `Business._id`). Do not re-derive scope from a cookie / form field you don't sign. Server components do the same inline: `const businessId = session.businessId;`.
 
 ## Services (`services/*`)
 
@@ -75,7 +73,7 @@ The session's `userId` is the trust root. `Vendor._id` is derived from it on eve
 - Always call `connectDB()` first.
 - Return **DTOs**, not Mongoose docs. DTOs have `id: string` (not `_id: ObjectId`), ISO date strings, and only the fields the UI needs. `toDTO(doc)` is the convention.
 - Wrap pure reads in React `cache()` from `"react"` when the same lookup may run twice in one request (layout + page, multiple tabs). Examples: `listPaymentCollections`, `listVendorBuyers`, `resolveStoreBySlug`.
-- Functions take `vendorId: Types.ObjectId | string` so callers can pass either a Mongoose `_id` or its `.toString()`.
+- Functions take `businessId: Types.ObjectId | string` so callers can pass either a Mongoose `_id` or its `.toString()`. Buyer creation/lookup is centralized in `services/buyers.ts` (`ensureBuyer`, `getBuyerAddress`) — buyers are a `User` (role buyer) owning a `Business` (role buyer).
 
 ## Actions (`actions/*`)
 
@@ -93,9 +91,9 @@ The session's `userId` is the trust root. `Vendor._id` is derived from it on eve
 
 ## Storefront flow (`/store/[slug]`)
 
-1. `lib/store-resolver.ts#resolveStoreBySlug(slug)` returns the active Business + Vendor (cached per request). It calls `notFound()` if either is missing/disabled.
-2. Cart lives in a cookie (`wh_cart`) — `{ vendorId, items: CartItem[] }`. Switching to a different store **clears the cart** (single-vendor cart by design).
-3. Checkout (`placeOrderAction`) re-validates every cart item against fresh product data, upserts a `User { role: "buyer" }` by phone, ensures a `Buyer` profile, creates the `Order`, then best-effort `decrementStocks`.
+1. `lib/store-resolver.ts#resolveStoreBySlug(slug)` returns the active seller Business (cached per request, filtered `role: "seller"`). It calls `notFound()` if missing/disabled.
+2. Cart lives in a cookie (`wh_cart`) — `{ businessId, items: CartItem[] }`. Switching to a different store **clears the cart** (single-store cart by design).
+3. Checkout (`placeOrderAction`) re-validates every cart item against fresh product data, calls `ensureBuyer` (upserts the buyer `User` + buyer `Business` by phone), creates the `Order`, then best-effort `decrementStocks`.
 4. Stock is decremented with a conditional `$inc` (`stock: { $gte: amount }`) so it can't go negative. The vendor-side order item editor uses the same pattern — and rolls back partial decrements if any product runs out.
 
 ## UI conventions
@@ -116,7 +114,7 @@ The session's `userId` is the trust root. `Vendor._id` is derived from it on eve
 
 ## Common pitfalls
 
-1. **Forgetting `vendorId` on a query.** Tenant leak. The compiler can't catch this; reviewing services for stray `Order.findOne({ _id: orderId })` (no `vendorId`) is the only safety net.
+1. **Forgetting `businessId` on a query.** Tenant leak. The compiler can't catch this; reviewing services for stray `Order.findOne({ _id: orderId })` (no `businessId`) is the only safety net. (There is no `Vendor`/`Buyer` table — don't reintroduce one; scope by the seller `businessId`.)
 2. **Reading `state` after a `redirect()` in an action.** `redirect()` throws — anything after it doesn't run. Put the redirect last.
 3. **Using `_id` instead of `id` on the client.** Services convert to string `id`. Don't pass Mongoose docs to client components.
 4. **Reintroducing Google Sheets.** It used to exist; it's gone. The `googleapis` dependency was uninstalled. Don't add it back.
@@ -126,7 +124,8 @@ The session's `userId` is the trust root. `Vendor._id` is derived from it on eve
 ## Environment
 
 `.env.local`:
-- `MONGODB_URI` — Mongo connection string (database is part of the URI).
+- `MONGODB_URI` — Mongo connection string.
+- `DB_NAME` — database name (e.g. `ESTORE_QA`). Passed as `dbName` to `mongoose.connect`, overriding any database in the URI. Falls back to the URI's database when unset. Wired in `lib/db.ts`.
 - `SESSION_SECRET` — JWT signing secret. Change before deploying.
 - `NODE_ENV` — affects cookie `secure` flag.
 
@@ -136,5 +135,6 @@ The session's `userId` is the trust root. `Vendor._id` is derived from it on eve
 
 - `GET /api/seed-admin?email=…&password=…&name=…` — bootstraps the first admin user. Refuses (409) if any admin already exists. Defaults: `admin@order.store` / `admin1234`.
 - `GET /api/migrate-slugs` — backfills `slug` on `Business` rows that were created before slugs were a thing.
+- `GET /api/migrate-roles` — backfills `Business.role = "seller"` on rows predating the seller/buyer `role` split (run once after the Vendor/Buyer-table removal so existing shops resolve again).
 
-Both are HTTP routes — protect or remove before production.
+All are HTTP routes — protect or remove before production.

@@ -13,7 +13,7 @@ export default async function ProductDetailPage({
 }) {
   const { slug, productId } = await params;
   const store = await resolveStoreBySlug(slug);
-  const product = await getProduct(store.vendorId, productId);
+  const product = await getProduct(store.businessId, productId);
   if (!product || product.status !== "active") notFound();
 
   return (
@@ -63,7 +63,7 @@ export default async function ProductDetailPage({
         <div className="mt-6">
           <AddToCartButton
             productId={product.id}
-            vendorId={store.vendorId}
+            businessId={store.businessId}
             hasVariants={product.hasVariants}
             variants={product.variants}
             disabled={!product.hasVariants && product.stock <= 0}

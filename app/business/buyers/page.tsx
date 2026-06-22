@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { ListSearch } from "@/components/shared/list-search";
 import { Users } from "lucide-react";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { Business } from "@/models/Business";
 import { requireRole } from "@/lib/dal";
 import { formatCurrency } from "@/lib/utils";
@@ -29,11 +28,11 @@ export default async function VendorBuyersPage({
 }) {
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id businessId").lean();
-  const business = vendor
-    ? await Business.findById(vendor.businessId).select("name slug").lean()
+  const businessId = session.businessId;
+  const business = businessId
+    ? await Business.findById(businessId).select("name slug").lean()
     : null;
-  const all = vendor ? await listVendorBuyers(vendor._id) : [];
+  const all = businessId ? await listVendorBuyers(businessId) : [];
   all.sort((a, b) => {
     if (a.orderCount === 0 && b.orderCount > 0) return 1;
     if (b.orderCount === 0 && a.orderCount > 0) return -1;

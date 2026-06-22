@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { User } from "@/models/User";
 import { Business } from "@/models/Business";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -16,22 +15,20 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
   const { id } = await params;
   if (!mongoose.isValidObjectId(id)) notFound();
   await connectDB();
-  const vendor = await Vendor.findById(id)
-    .populate({ path: "userId", model: User, select: "name email phone" })
-    .populate({ path: "businessId", model: Business })
+  const business = await Business.findOne({ _id: id, role: "seller" })
+    .populate({ path: "ownerId", model: User, select: "name email phone" })
     .lean();
-  if (!vendor) notFound();
+  if (!business) notFound();
 
-  const user = vendor.userId as unknown as { name: string; email: string; phone?: string };
-  const business = vendor.businessId as unknown as { name: string; phone?: string; address?: string };
-  const products = (await listProducts(vendor._id)).slice(0, 20);
+  const user = business.ownerId as unknown as { name: string; email: string; phone?: string };
+  const products = (await listProducts(business._id)).slice(0, 20);
 
   return (
     <div>
       <PageHeader
         title={business?.name}
         description={`Owned by ${user?.name}`}
-        action={<ToggleVendorButton vendorId={id} status={vendor.status} />}
+        action={<ToggleVendorButton businessId={id} status={business.status} />}
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -46,8 +43,8 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
           <CardHeader><CardTitle>Business</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Address</span><span>{business?.address || "—"}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Status</span><Badge variant={vendor.status === "active" ? "success" : "warning"}>{vendor.status}</Badge></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Joined</span><span>{formatDate(vendor.createdAt)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Status</span><Badge variant={business.status === "active" ? "success" : "warning"}>{business.status}</Badge></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Joined</span><span>{formatDate(business.createdAt)}</span></div>
           </CardContent>
         </Card>
       </div>

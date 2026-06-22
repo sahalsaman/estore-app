@@ -23,15 +23,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { User } from "@/models/User";
-import { Buyer } from "@/models/Buyer";
 import { BuyerInvite } from "@/models/BuyerInvite";
 import { requireRole } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { listOrdersForBuyer, listVendorBuyers } from "@/services/orders";
+import { listOrdersForBuyer } from "@/services/orders";
 import { listCollectionsForBuyer } from "@/services/payment-collections";
+import { getBuyerAddress } from "@/services/buyers";
 import { AddCollectionDialog } from "../../collections/add-collection-dialog";
+import { AddOrderDialog } from "../../orders/add-order-dialog";
+import { loadOrderOptions } from "../../orders/order-options";
 
 const TABS = [
   { key: "detail", label: "Buyer detail" },
@@ -63,20 +64,20 @@ export default async function VendorBuyerDetailPage({
 
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  if (!vendor) notFound();
+  const businessId = session.businessId;
+  if (!businessId) notFound();
 
-  const [orders, collections, invite, vendorBuyers] = await Promise.all([
-    listOrdersForBuyer(vendor._id, phone),
-    listCollectionsForBuyer(vendor._id, phone),
-    BuyerInvite.findOne({ vendorId: vendor._id, buyerPhone: phone }).lean(),
-    listVendorBuyers(vendor._id),
+  const [orders, collections, invite, orderOptions] = await Promise.all([
+    listOrdersForBuyer(businessId, phone),
+    listCollectionsForBuyer(businessId, phone),
+    BuyerInvite.findOne({ businessId, buyerPhone: phone }).lean(),
+    loadOrderOptions(businessId),
   ]);
   if (orders.length === 0 && collections.length === 0 && !invite) notFound();
-  const buyerOptions = vendorBuyers.map((b) => ({ name: b.name, phone: b.phone }));
+  const buyerOptions = orderOptions.buyers;
 
   const userDoc = await User.findOne({ phone, role: "buyer" }).lean();
-  const buyerDoc = userDoc ? await Buyer.findOne({ userId: userDoc._id }).lean() : null;
+  const buyerAddress = userDoc ? await getBuyerAddress(userDoc._id) : "";
   const displayName =
     userDoc?.name ||
     orders[0]?.buyerName ||
@@ -100,6 +101,11 @@ export default async function VendorBuyerDetailPage({
         action={
           <div className="flex items-center gap-2">
             {isInvitedOnly && <Badge variant="warning">Invited</Badge>}
+            <AddOrderDialog
+              buyers={buyerOptions}
+              products={orderOptions.products}
+              defaultBuyerPhone={phone}
+            />
             <Button variant="ghost" asChild>
               <Link href="/business/buyers">
                 <ArrowLeft className="h-4 w-4" /> Back to buyers
@@ -173,10 +179,10 @@ export default async function VendorBuyerDetailPage({
                   <span>{userDoc.email}</span>
                 </div>
               )}
-              {buyerDoc?.address && (
+              {buyerAddress && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Address</span>
-                  <span className="text-right">{buyerDoc.address}</span>
+                  <span className="text-right">{buyerAddress}</span>
                 </div>
               )}
               <div className="flex justify-between">

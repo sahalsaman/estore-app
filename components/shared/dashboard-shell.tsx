@@ -12,6 +12,7 @@ export type NavItem = {
   href: string;
   label: string;
   icon: React.ReactNode;
+  badge?: number;
 };
 
 export function DashboardShell({
@@ -43,7 +44,12 @@ export function DashboardShell({
             )}
           >
             <span className="h-4 w-4">{item.icon}</span>
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {item.badge ? (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-brand-foreground">
+                {item.badge}
+              </span>
+            ) : null}
           </Link>
         );
       })}

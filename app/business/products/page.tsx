@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ListSearch } from "@/components/shared/list-search";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { requireRole } from "@/lib/dal";
 import { formatCurrency } from "@/lib/utils";
 import { listProducts } from "@/services/products";
@@ -20,9 +19,9 @@ export default async function VendorProductsPage({
 }) {
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).lean();
-  if (!vendor) return null;
-  const all = await listProducts(vendor._id);
+  const businessId = session.businessId;
+  if (!businessId) return null;
+  const all = await listProducts(businessId);
   const { q } = await searchParams;
   const needle = (q ?? "").trim().toLowerCase();
   const products = needle
@@ -112,6 +111,7 @@ export default async function VendorProductsPage({
                             stock: v.stock,
                             status: v.status,
                           })),
+                          variantImages: p.variantImages,
                         }}
                       />
                     </TableCell>

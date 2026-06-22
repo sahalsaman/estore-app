@@ -6,27 +6,25 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ShoppingBag } from "lucide-react";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { User } from "@/models/User";
 import { Business } from "@/models/Business";
 import { formatDate } from "@/lib/utils";
 
 async function getVendors() {
   await connectDB();
-  const vendors = await Vendor.find()
-    .populate({ path: "userId", model: User, select: "name email" })
-    .populate({ path: "businessId", model: Business, select: "name" })
+  const businesses = await Business.find({ role: "seller" })
+    .populate({ path: "ownerId", model: User, select: "name email" })
     .sort({ createdAt: -1 })
     .lean();
-  return vendors;
+  return businesses;
 }
 
 export default async function VendorsPage() {
-  const vendors = await getVendors();
+  const businesses = await getVendors();
   return (
     <div>
       <PageHeader title="Vendors" description="Sellers active on order.store." />
-      {vendors.length === 0 ? (
+      {businesses.length === 0 ? (
         <EmptyState icon={<ShoppingBag className="h-8 w-8" />} title="No vendors yet" />
       ) : (
         <Card>
@@ -42,20 +40,19 @@ export default async function VendorsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {vendors.map((v) => {
-                const user = v.userId as unknown as { name: string; email: string };
-                const business = v.businessId as unknown as { name: string };
+              {businesses.map((b) => {
+                const owner = b.ownerId as unknown as { name?: string; email?: string };
                 return (
-                  <TableRow key={v._id.toString()}>
-                    <TableCell className="font-medium">{user?.name}</TableCell>
-                    <TableCell>{business?.name}</TableCell>
-                    <TableCell>{user?.email}</TableCell>
+                  <TableRow key={b._id.toString()}>
+                    <TableCell className="font-medium">{owner?.name}</TableCell>
+                    <TableCell>{b.name}</TableCell>
+                    <TableCell>{owner?.email}</TableCell>
                     <TableCell>
-                      <Badge variant={v.status === "active" ? "success" : "warning"}>{v.status}</Badge>
+                      <Badge variant={b.status === "active" ? "success" : "warning"}>{b.status}</Badge>
                     </TableCell>
-                    <TableCell>{formatDate(v.createdAt)}</TableCell>
+                    <TableCell>{formatDate(b.createdAt)}</TableCell>
                     <TableCell className="text-right">
-                      <Link href={`/admin/vendors/${v._id.toString()}`} className="text-sm text-brand hover:underline">
+                      <Link href={`/admin/vendors/${b._id.toString()}`} className="text-sm text-brand hover:underline">
                         Manage
                       </Link>
                     </TableCell>

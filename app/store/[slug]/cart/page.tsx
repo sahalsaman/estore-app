@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { getCartForVendor } from "@/actions/orders";
+import { getCartForBusiness } from "@/actions/orders";
 import { resolveStoreBySlug } from "@/lib/store-resolver";
 import { CartCheckout } from "./cart-checkout";
 
@@ -15,7 +15,7 @@ export default async function VendorCartPage({
 }) {
   const { slug } = await params;
   const store = await resolveStoreBySlug(slug);
-  const cart = await getCartForVendor(store.vendorId);
+  const cart = await getCartForBusiness(store.businessId);
 
   return (
     <div>
@@ -30,7 +30,7 @@ export default async function VendorCartPage({
       ) : (
         <Card>
           <CardContent className="p-0">
-            <CartCheckout vendorId={store.vendorId} items={cart} />
+            <CartCheckout businessId={store.businessId} items={cart} />
           </CardContent>
         </Card>
       )}

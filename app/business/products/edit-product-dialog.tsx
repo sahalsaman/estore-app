@@ -39,6 +39,7 @@ export type EditableProduct = {
     stock: number;
     status: "active" | "inactive";
   }[];
+  variantImages: { value: string; image: string }[];
 };
 
 export function EditProductDialog({ product }: { product: EditableProduct }) {
@@ -89,6 +90,7 @@ export function EditProductDialog({ product }: { product: EditableProduct }) {
             hasVariants: product.hasVariants,
             optionNames: product.optionNames,
             variants: product.variants,
+            variantImages: product.variantImages,
           }}
           onSuccess={() => {
             toast.success("Product updated");

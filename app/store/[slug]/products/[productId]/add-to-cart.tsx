@@ -15,17 +15,18 @@ type Variant = {
   wholesalePrice: number;
   stock: number;
   status: "active" | "inactive";
+  image?: string;
 };
 
 export function AddToCartButton({
   productId,
-  vendorId,
+  businessId,
   hasVariants,
   variants,
   disabled,
 }: {
   productId: string;
-  vendorId: string;
+  businessId: string;
   hasVariants?: boolean;
   variants?: Variant[];
   disabled?: boolean;
@@ -44,21 +45,21 @@ export function AddToCartButton({
   };
 
   if (hasVariants) {
-    return <VariantGrid productId={productId} vendorId={vendorId} variants={variants ?? []} pending={pending} start={start} onResult={onResult} />;
+    return <VariantGrid productId={productId} businessId={businessId} variants={variants ?? []} pending={pending} start={start} onResult={onResult} />;
   }
 
-  return <SimpleAdd productId={productId} vendorId={vendorId} disabled={disabled} pending={pending} start={start} onResult={onResult} />;
+  return <SimpleAdd productId={productId} businessId={businessId} disabled={disabled} pending={pending} start={start} onResult={onResult} />;
 }
 
 type Common = {
   productId: string;
-  vendorId: string;
+  businessId: string;
   pending: boolean;
   start: (cb: () => Promise<void>) => void;
   onResult: (res: { ok: boolean; message?: string; switched?: boolean }) => void;
 };
 
-function SimpleAdd({ productId, vendorId, disabled, pending, start, onResult }: Common & { disabled?: boolean }) {
+function SimpleAdd({ productId, businessId, disabled, pending, start, onResult }: Common & { disabled?: boolean }) {
   const [qty, setQty] = useState(1);
   return (
     <div className="flex items-center gap-3">
@@ -74,7 +75,7 @@ function SimpleAdd({ productId, vendorId, disabled, pending, start, onResult }: 
         variant="brand"
         size="lg"
         disabled={disabled || pending}
-        onClick={() => start(async () => onResult(await addToCartAction(productId, vendorId, qty)))}
+        onClick={() => start(async () => onResult(await addToCartAction(productId, businessId, qty)))}
       >
         <ShoppingCart className="h-4 w-4" />
         {pending ? "Adding..." : "Add to cart"}
@@ -83,7 +84,7 @@ function SimpleAdd({ productId, vendorId, disabled, pending, start, onResult }: 
   );
 }
 
-function VariantGrid({ productId, vendorId, variants, pending, start, onResult }: Common & { variants: Variant[] }) {
+function VariantGrid({ productId, businessId, variants, pending, start, onResult }: Common & { variants: Variant[] }) {
   const sellable = variants.filter((v) => v.status === "active");
   const [qtys, setQtys] = useState<Record<string, number>>({});
 
@@ -97,7 +98,7 @@ function VariantGrid({ productId, vendorId, variants, pending, start, onResult }
 
   const onAddAll = () =>
     start(async () => {
-      const res = await addVariantsToCartAction(productId, vendorId, lines);
+      const res = await addVariantsToCartAction(productId, businessId, lines);
       if (res.ok) setQtys({});
       onResult(res);
     });
@@ -112,6 +113,10 @@ function VariantGrid({ productId, vendorId, variants, pending, start, onResult }
             const out = v.stock <= 0;
             return (
               <div key={v.id} className="flex items-center gap-3 px-3 py-2">
+                {v.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={v.image} alt={v.label} className="h-12 w-12 shrink-0 rounded-md border object-cover" />
+                ) : null}
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{v.label}</p>
                   <p className="text-sm text-muted-foreground">

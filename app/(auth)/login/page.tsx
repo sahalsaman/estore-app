@@ -19,6 +19,12 @@ export default function LoginPage() {
             Create an account
           </Link>
         </div>
+        <div className="text-center text-sm text-muted-foreground">
+          Shopping as a buyer?{" "}
+          <Link href="/buyer-login" className="text-brand hover:underline">
+            Buyer sign in
+          </Link>
+        </div>
       </CardContent>
     </Card>
   );

@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { requireRole } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { getPaymentCollection } from "@/services/payment-collections";
@@ -31,11 +30,11 @@ export default async function CollectionDetailPage({
   const { id } = await params;
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  if (!vendor) notFound();
+  const businessId = session.businessId;
+  if (!businessId) notFound();
   const [collection, buyers] = await Promise.all([
-    getPaymentCollection(vendor._id, id),
-    listVendorBuyers(vendor._id),
+    getPaymentCollection(businessId, id),
+    listVendorBuyers(businessId),
   ]);
   if (!collection) notFound();
 

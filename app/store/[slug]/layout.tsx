@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ShoppingCart, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getCartForVendor } from "@/actions/orders";
+import { getCartForBusiness } from "@/actions/orders";
 import { resolveStoreBySlug } from "@/lib/store-resolver";
 
 export default async function VendorStoreLayout({
@@ -13,7 +13,7 @@ export default async function VendorStoreLayout({
 }) {
   const { slug } = await params;
   const store = await resolveStoreBySlug(slug);
-  const cart = await getCartForVendor(store.vendorId);
+  const cart = await getCartForBusiness(store.businessId);
   const count = cart.reduce((s, i) => s + i.quantity, 0);
 
   return (

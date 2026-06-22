@@ -3,11 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
-import { User } from "@/models/User";
-import { Buyer } from "@/models/Buyer";
-import { requireRole } from "@/lib/dal";
+import { requireVendorBusinessId } from "@/lib/dal";
+import { ensureBuyer } from "@/services/buyers";
 import { upsertBuyerInvite } from "@/services/buyer-invites";
 
 const Schema = z.object({
@@ -30,28 +27,18 @@ export async function inviteBuyerAction(
   _prev: InviteFormState,
   formData: FormData
 ): Promise<InviteFormState> {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
   const parsed = Schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
+  if (!businessId) return { error: "No business linked" };
 
-  await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId })
-    .select("_id businessId")
-    .lean();
-  if (!vendor) return { error: "Vendor not found" };
-
-  let buyer = await User.findOne({ role: "buyer", phone: parsed.data.buyerPhone });
-  if (!buyer) {
-    buyer = await User.create({
-      name: parsed.data.buyerName,
-      phone: parsed.data.buyerPhone,
-      role: "buyer",
-    });
-    await Buyer.create({ userId: buyer._id });
-  }
+  const buyer = await ensureBuyer({
+    name: parsed.data.buyerName,
+    phone: parsed.data.buyerPhone,
+  });
 
   const res = await upsertBuyerInvite(
-    { vendorId: vendor._id, businessId: vendor.businessId },
+    { businessId },
     {
       buyerName: parsed.data.buyerName,
       buyerPhone: parsed.data.buyerPhone,

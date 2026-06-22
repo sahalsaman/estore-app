@@ -18,6 +18,7 @@ type Variant = {
   wholesalePrice: number;
   stock: number;
   status: "active" | "inactive";
+  image?: string;
 };
 
 type Product = {
@@ -34,15 +35,20 @@ type Product = {
 
 export function StoreProductCard({
   slug,
-  vendorId,
+  businessId,
   product,
+  basePath,
 }: {
   slug: string;
-  vendorId: string;
+  businessId: string;
   product: Product;
+  // Where the product-detail link points. Defaults to the public storefront;
+  // the buyer module passes `/account/sellers/[slug]` to stay in-account.
+  basePath?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const hrefBase = basePath ?? `/store/${slug}`;
 
   const onResult = (res: { ok: boolean; message?: string; switched?: boolean }) => {
     if (!res.ok) {
@@ -56,7 +62,7 @@ export function StoreProductCard({
 
   return (
     <Card className="flex h-full flex-col overflow-hidden transition-shadow hover:shadow-md">
-      <Link href={`/store/${slug}/products/${product.id}`} className="group block">
+      <Link href={`${hrefBase}/products/${product.id}`} className="group block">
         <div className="aspect-square w-full bg-muted">
           {product.images[0] ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -84,9 +90,9 @@ export function StoreProductCard({
       </Link>
 
       {product.hasVariants ? (
-        <VariantGrid product={product} pending={pending} start={start} vendorId={vendorId} onResult={onResult} />
+        <VariantGrid product={product} pending={pending} start={start} businessId={businessId} onResult={onResult} />
       ) : (
-        <SimpleAdd product={product} pending={pending} start={start} vendorId={vendorId} onResult={onResult} />
+        <SimpleAdd product={product} pending={pending} start={start} businessId={businessId} onResult={onResult} />
       )}
     </Card>
   );
@@ -94,19 +100,19 @@ export function StoreProductCard({
 
 type AddProps = {
   product: Product;
-  vendorId: string;
+  businessId: string;
   pending: boolean;
   start: (cb: () => Promise<void>) => void;
   onResult: (res: { ok: boolean; message?: string; switched?: boolean }) => void;
 };
 
-function SimpleAdd({ product, vendorId, pending, start, onResult }: AddProps) {
+function SimpleAdd({ product, businessId, pending, start, onResult }: AddProps) {
   const [qty, setQty] = useState(1);
   const max = Math.max(1, product.stock);
   const outOfStock = product.stock <= 0;
 
   const onAdd = () =>
-    start(async () => onResult(await addToCartAction(product.id, vendorId, qty)));
+    start(async () => onResult(await addToCartAction(product.id, businessId, qty)));
 
   return (
     <div className="mt-auto flex items-center gap-2 border-t p-3">
@@ -139,7 +145,7 @@ function SimpleAdd({ product, vendorId, pending, start, onResult }: AddProps) {
   );
 }
 
-function VariantGrid({ product, vendorId, pending, start, onResult }: AddProps) {
+function VariantGrid({ product, businessId, pending, start, onResult }: AddProps) {
   const sellable = product.variants.filter((v) => v.status === "active");
   const [qtys, setQtys] = useState<Record<string, number>>({});
 
@@ -153,7 +159,7 @@ function VariantGrid({ product, vendorId, pending, start, onResult }: AddProps) 
 
   const onAddAll = () =>
     start(async () => {
-      const res = await addVariantsToCartAction(product.id, vendorId, lines);
+      const res = await addVariantsToCartAction(product.id, businessId, lines);
       if (res.ok) setQtys({});
       onResult(res);
     });
@@ -169,6 +175,10 @@ function VariantGrid({ product, vendorId, pending, start, onResult }: AddProps) 
             const q = qtys[v.id] ?? 0;
             return (
               <div key={v.id} className="flex items-center gap-2 text-sm">
+                {v.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={v.image} alt={v.label} className="h-9 w-9 shrink-0 rounded border object-cover" />
+                ) : null}
                 <div className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{v.label}</span>
                   <span className="text-xs text-muted-foreground">

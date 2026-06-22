@@ -9,6 +9,8 @@ export interface IUser {
   password?: string;
   role: UserRole;
   businessId?: Types.ObjectId | null;
+  // Per-member active/disabled flag for vendor (seller) team members.
+  status: "active" | "disabled";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,6 +23,7 @@ const UserSchema = new Schema<IUser>(
     password: { type: String },
     role: { type: String, enum: ["admin", "vendor", "buyer"], required: true, index: true },
     businessId: { type: Schema.Types.ObjectId, ref: "Business", default: null, index: true },
+    status: { type: String, enum: ["active", "disabled"], default: "active", index: true },
   },
   { timestamps: true }
 );

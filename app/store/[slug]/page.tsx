@@ -19,7 +19,7 @@ export default async function VendorStorePage({
   const { slug } = await params;
   const store = await resolveStoreBySlug(slug);
   const sp = await searchParams;
-  const all = await listProducts(store.vendorId);
+  const all = await listProducts(store.businessId);
   const active = all.filter((p) => p.status === "active");
   const categories = Array.from(new Set(active.map((p) => p.category))).sort();
   const q = (sp.q ?? "").trim().toLowerCase();
@@ -58,7 +58,7 @@ export default async function VendorStorePage({
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {products.map((p) => (
-            <StoreProductCard key={p.id} slug={slug} vendorId={store.vendorId} product={p} />
+            <StoreProductCard key={p.id} slug={slug} businessId={store.businessId} product={p} />
           ))}
         </div>
       )}

@@ -1,5 +1,4 @@
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { requireRole } from "@/lib/dal";
 import { listPaymentCollections } from "@/services/payment-collections";
 import { listVendorBuyers } from "@/services/orders";
@@ -12,9 +11,9 @@ export default async function CollectionDetailLayout({
 }) {
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  const [collections, vendorBuyers] = vendor
-    ? await Promise.all([listPaymentCollections(vendor._id), listVendorBuyers(vendor._id)])
+  const businessId = session.businessId;
+  const [collections, vendorBuyers] = businessId
+    ? await Promise.all([listPaymentCollections(businessId), listVendorBuyers(businessId)])
     : [[], []];
   const buyers = vendorBuyers.map((b) => ({ name: b.name, phone: b.phone }));
 

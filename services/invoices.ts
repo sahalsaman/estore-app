@@ -54,27 +54,26 @@ function toDTO(d: IInvoice): InvoiceDTO {
 }
 
 export async function getInvoiceForOrder(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   orderId: string
 ): Promise<InvoiceDTO | null> {
   if (!mongoose.isValidObjectId(orderId)) return null;
   await connectDB();
-  const doc = await Invoice.findOne({ vendorId, orderId }).lean<IInvoice>();
+  const doc = await Invoice.findOne({ businessId, orderId }).lean<IInvoice>();
   return doc ? toDTO(doc) : null;
 }
 
 export async function generateInvoiceForOrder(
-  vendorId: Types.ObjectId | string,
   businessId: Types.ObjectId | string,
   orderId: string
 ): Promise<{ ok: true; invoice: InvoiceDTO } | { ok: false; reason: string }> {
   if (!mongoose.isValidObjectId(orderId)) return { ok: false, reason: "Invalid order id" };
   await connectDB();
 
-  const existing = await Invoice.findOne({ vendorId, orderId }).lean<IInvoice>();
+  const existing = await Invoice.findOne({ businessId, orderId }).lean<IInvoice>();
   if (existing) return { ok: false, reason: "Invoice already exists for this order" };
 
-  const order = await Order.findOne({ _id: orderId, vendorId }).lean();
+  const order = await Order.findOne({ _id: orderId, businessId }).lean();
   if (!order) return { ok: false, reason: "Order not found" };
 
   const includedItems = order.items.filter((it) => it.included !== false);
@@ -100,7 +99,6 @@ export async function generateInvoiceForOrder(
   try {
     await PaymentCollection.create({
       _id: collectionId,
-      vendorId,
       businessId,
       buyerId: order.buyerId ?? null,
       buyerName: order.buyerName,
@@ -116,7 +114,6 @@ export async function generateInvoiceForOrder(
 
     const invoice = await Invoice.create({
       _id: invoiceId,
-      vendorId,
       businessId,
       orderId: order._id,
       buyerId: order.buyerId ?? null,

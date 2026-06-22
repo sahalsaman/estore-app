@@ -5,10 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { connectDB } from "@/lib/db";
-import { Buyer } from "@/models/Buyer";
 import { User } from "@/models/User";
 import { Business } from "@/models/Business";
-import { Vendor } from "@/models/Vendor";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Order } from "@/models/Order";
 
@@ -16,25 +14,19 @@ export default async function BuyerDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   if (!mongoose.isValidObjectId(id)) notFound();
   await connectDB();
-  const buyer = await Buyer.findById(id).populate({ path: "userId", model: User, select: "name phone email" }).lean();
-  if (!buyer) notFound();
-  const u = buyer.userId as unknown as { name: string; phone?: string; email?: string };
+  const u = await User.findOne({ _id: id, role: "buyer" }).select("name phone email").lean();
+  if (!u) notFound();
 
-  const orders = u?.phone
+  const orders = u.phone
     ? await Order.find({ buyerPhone: u.phone })
         .sort({ createdAt: -1 })
-        .populate({
-          path: "vendorId",
-          model: Vendor,
-          select: "businessId",
-          populate: { path: "businessId", model: Business, select: "name" },
-        })
+        .populate({ path: "businessId", model: Business, select: "name" })
         .lean()
     : [];
 
   const rows = orders.map((o) => {
-    const vendor = o.vendorId as unknown as { businessId?: { name?: string } } | null;
-    const businessName = vendor?.businessId?.name ?? "—";
+    const business = o.businessId as unknown as { name?: string } | null;
+    const businessName = business?.name ?? "—";
     const summary = o.items.map((it) => `${it.name} ×${it.quantity}`).join(", ");
     return {
       date: o.createdAt.toISOString(),

@@ -7,12 +7,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ListSearch } from "@/components/shared/list-search";
 import { ShoppingCart } from "lucide-react";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { requireRole } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { listOrders, listVendorBuyers } from "@/services/orders";
-import { listProducts } from "@/services/products";
-import { AddOrderDialog, type BuyerOption, type ProductOption } from "./add-order-dialog";
+import { listOrders } from "@/services/orders";
+import { AddOrderDialog } from "./add-order-dialog";
+import { loadOrderOptions } from "./order-options";
 
 export default async function VendorOrdersPage({
   searchParams,
@@ -21,32 +20,13 @@ export default async function VendorOrdersPage({
 }) {
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  const [all, vendorBuyers, products] = vendor
-    ? await Promise.all([
-        listOrders(vendor._id),
-        listVendorBuyers(vendor._id),
-        listProducts(vendor._id),
-      ])
-    : [[], [], []];
+  const businessId = session.businessId;
+  const [all, options] = businessId
+    ? await Promise.all([listOrders(businessId), loadOrderOptions(businessId)])
+    : [[], { buyers: [], products: [] }];
 
-  const buyerOptions: BuyerOption[] = vendorBuyers.map((b) => ({ name: b.name, phone: b.phone }));
-  const productOptions: ProductOption[] = products
-    .filter((p) => p.status === "active")
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      wholesalePrice: p.wholesalePrice,
-      stock: p.stock,
-      hasVariants: p.hasVariants,
-      variants: p.variants.map((v) => ({
-        id: v.id,
-        label: v.label,
-        wholesalePrice: v.wholesalePrice,
-        stock: v.stock,
-        status: v.status,
-      })),
-    }));
+  const buyerOptions = options.buyers;
+  const productOptions = options.products;
 
   const { q } = await searchParams;
   const needle = (q ?? "").trim().toLowerCase();

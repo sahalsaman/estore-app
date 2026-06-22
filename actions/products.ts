@@ -4,9 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { Business } from "@/models/Business";
-import { requireRole } from "@/lib/dal";
+import { requireVendorBusinessId } from "@/lib/dal";
 import {
   createProduct,
   deleteProduct,
@@ -41,6 +40,12 @@ const ProductSchema = z.object({
     .default(false),
   optionNames: z.string().optional(), // JSON array of strings
   variantsJson: z.string().optional(), // JSON array of variants
+  variantImagesJson: z.string().optional(), // JSON array of { value, image }
+});
+
+const VariantImageInputSchema = z.object({
+  value: z.string().min(1),
+  image: z.string().trim().min(1),
 });
 
 function parseImages(raw?: string): string[] {
@@ -81,15 +86,18 @@ function buildProductInput(formData: FormData): ParseResult {
         hasVariants: false,
         optionNames: [],
         variants: [],
+        variantImages: [],
       },
     };
   }
 
   let optionNames: string[] = [];
   let rawVariants: unknown[] = [];
+  let rawVariantImages: unknown[] = [];
   try {
     optionNames = d.optionNames ? (JSON.parse(d.optionNames) as string[]) : [];
     rawVariants = d.variantsJson ? (JSON.parse(d.variantsJson) as unknown[]) : [];
+    rawVariantImages = d.variantImagesJson ? (JSON.parse(d.variantImagesJson) as unknown[]) : [];
   } catch {
     return { ok: false, fieldErrors: { variantsJson: ["Could not read the options"] } };
   }
@@ -107,6 +115,16 @@ function buildProductInput(formData: FormData): ParseResult {
     return { ok: false, fieldErrors: { variantsJson: ["Add at least one option combination"] } };
   }
 
+  // Keep only images attached to values that are actually in play; drop blanks.
+  const liveValues = new Set(variants.flatMap((v) => v.options.map((o) => o.value)));
+  const variantImages: { value: string; image: string }[] = [];
+  for (const raw of rawVariantImages) {
+    const vi = VariantImageInputSchema.safeParse(raw);
+    if (vi.success && liveValues.has(vi.data.value)) {
+      variantImages.push(vi.data);
+    }
+  }
+
   return {
     ok: true,
     input: {
@@ -117,6 +135,7 @@ function buildProductInput(formData: FormData): ParseResult {
       hasVariants: true,
       optionNames: optionNames.map((n) => n.trim()).filter(Boolean),
       variants,
+      variantImages,
     },
   };
 }
@@ -127,54 +146,46 @@ async function storeSlug(vendorBusinessId: unknown): Promise<string | null> {
 }
 
 export async function createProductAction(_prev: ProductFormState, formData: FormData): Promise<ProductFormState> {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
   const parsed = buildProductInput(formData);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
+  if (!businessId) return { error: "No business linked" };
 
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId });
-  if (!vendor) return { error: "Vendor profile not found" };
-
-  const created = await createProduct(
-    { vendorId: vendor._id, businessId: vendor.businessId },
-    parsed.input
-  );
+  const created = await createProduct({ businessId }, parsed.input);
   if (!created.ok) return { error: `Couldn't create product: ${created.reason}` };
 
   revalidatePath("/business/products");
-  const slug = await storeSlug(vendor.businessId);
+  const slug = await storeSlug(businessId);
   if (slug) revalidatePath(`/store/${slug}`);
   return { ok: true };
 }
 
 export async function updateProductAction(productId: string, _prev: ProductFormState, formData: FormData): Promise<ProductFormState> {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
   const parsed = buildProductInput(formData);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
+  if (!businessId) return { error: "No business linked" };
 
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId });
-  if (!vendor) return { error: "Vendor not found" };
-
-  const updated = await updateProduct(vendor._id, productId, parsed.input);
+  const updated = await updateProduct(businessId, productId, parsed.input);
   if (!updated.ok) return { error: `Couldn't update product: ${updated.reason}` };
 
   revalidatePath("/business/products");
-  const slug = await storeSlug(vendor.businessId);
+  const slug = await storeSlug(businessId);
   if (slug) revalidatePath(`/store/${slug}`);
   return { ok: true };
 }
 
 export async function deleteProductAction(productId: string) {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
+  if (!businessId) return { ok: false as const, message: "No business linked" };
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId });
-  if (!vendor) return { ok: false as const, message: "Vendor not found" };
-  const res = await deleteProduct(vendor._id, productId);
+  const res = await deleteProduct(businessId, productId);
   if (!res.ok) return { ok: false as const, message: res.reason };
 
   revalidatePath("/business/products");
-  const slug = await storeSlug(vendor.businessId);
+  const slug = await storeSlug(businessId);
   if (slug) revalidatePath(`/store/${slug}`);
   return { ok: true as const };
 }

@@ -1,5 +1,4 @@
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { requireRole } from "@/lib/dal";
 import { listVendorBuyers } from "@/services/orders";
 import { BuyersSidebar, type BuyerSidebarItem } from "./buyers-sidebar";
@@ -15,8 +14,8 @@ export default async function BuyerDetailLayout({
   const activePhone = decodeURIComponent(rawPhone);
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  const all = vendor ? await listVendorBuyers(vendor._id) : [];
+  const businessId = session.businessId;
+  const all = businessId ? await listVendorBuyers(businessId) : [];
 
   const buyers: BuyerSidebarItem[] = all
     .map((b) => ({

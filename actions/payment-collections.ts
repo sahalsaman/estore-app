@@ -5,8 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
-import { requireRole } from "@/lib/dal";
+import { requireVendorBusinessId } from "@/lib/dal";
 import {
   createPaymentCollection,
   deletePaymentCollection,
@@ -31,16 +30,14 @@ export async function createCollectionAction(
   _prev: CollectionFormState,
   formData: FormData
 ): Promise<CollectionFormState> {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
   const parsed = Schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
+  if (!businessId) return { error: "No business linked" };
 
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id businessId").lean();
-  if (!vendor) return { error: "Vendor not found" };
-
   const res = await createPaymentCollection(
-    { vendorId: vendor._id, businessId: vendor.businessId },
+    { businessId },
     {
       buyerName: parsed.data.buyerName,
       buyerPhone: parsed.data.buyerPhone,
@@ -62,15 +59,13 @@ export async function updateCollectionAction(
   _prev: CollectionFormState,
   formData: FormData
 ): Promise<CollectionFormState> {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
   const parsed = Schema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
+  if (!businessId) return { error: "No business linked" };
 
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  if (!vendor) return { error: "Vendor not found" };
-
-  const res = await updatePaymentCollection(vendor._id, id, {
+  const res = await updatePaymentCollection(businessId, id, {
     buyerName: parsed.data.buyerName,
     buyerPhone: parsed.data.buyerPhone,
     amount: parsed.data.amount,
@@ -87,11 +82,10 @@ export async function updateCollectionAction(
 }
 
 export async function deleteCollectionAction(id: string) {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
+  if (!businessId) return { ok: false as const, message: "No business linked" };
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  if (!vendor) return { ok: false as const, message: "Vendor not found" };
-  const res = await deletePaymentCollection(vendor._id, id);
+  const res = await deletePaymentCollection(businessId, id);
   if (!res.ok) return { ok: false as const, message: res.reason };
   revalidatePath("/business/collections");
   return { ok: true as const };

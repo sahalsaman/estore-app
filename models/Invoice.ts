@@ -11,7 +11,6 @@ export interface IInvoiceItem {
 
 export interface IInvoice {
   _id: Types.ObjectId;
-  vendorId: Types.ObjectId;
   businessId: Types.ObjectId;
   orderId: Types.ObjectId;
   buyerId?: Types.ObjectId | null;
@@ -41,7 +40,6 @@ const InvoiceItemSchema = new Schema<IInvoiceItem>(
 
 const InvoiceSchema = new Schema<IInvoice>(
   {
-    vendorId: { type: Schema.Types.ObjectId, ref: "Vendor", required: true, index: true },
     businessId: { type: Schema.Types.ObjectId, ref: "Business", required: true, index: true },
     orderId: { type: Schema.Types.ObjectId, ref: "Order", required: true, unique: true, index: true },
     buyerId: { type: Schema.Types.ObjectId, ref: "User", default: null },
@@ -57,7 +55,7 @@ const InvoiceSchema = new Schema<IInvoice>(
   { timestamps: true }
 );
 
-InvoiceSchema.index({ vendorId: 1, invoiceNumber: 1 }, { unique: true });
+InvoiceSchema.index({ businessId: 1, invoiceNumber: 1 }, { unique: true });
 
 export const Invoice: Model<IInvoice> =
   (models.Invoice as Model<IInvoice>) || model<IInvoice>("Invoice", InvoiceSchema);

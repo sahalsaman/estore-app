@@ -23,9 +23,9 @@ function toDTO(d: IBuyerInvite): BuyerInviteDTO {
 }
 
 export const listBuyerInvites = cache(
-  async (vendorId: Types.ObjectId | string): Promise<BuyerInviteDTO[]> => {
+  async (businessId: Types.ObjectId | string): Promise<BuyerInviteDTO[]> => {
     await connectDB();
-    const docs = await BuyerInvite.find({ vendorId })
+    const docs = await BuyerInvite.find({ businessId })
       .sort({ createdAt: -1 })
       .lean<IBuyerInvite[]>();
     return docs.map(toDTO);
@@ -33,7 +33,7 @@ export const listBuyerInvites = cache(
 );
 
 export async function upsertBuyerInvite(
-  scope: { vendorId: Types.ObjectId | string; businessId: Types.ObjectId | string },
+  scope: { businessId: Types.ObjectId | string },
   input: { buyerName: string; buyerPhone: string; buyerId?: Types.ObjectId | string | null }
 ): Promise<
   | { ok: true; invite: BuyerInviteDTO; created: boolean }
@@ -42,7 +42,7 @@ export async function upsertBuyerInvite(
   await connectDB();
   try {
     const existing = await BuyerInvite.findOne({
-      vendorId: scope.vendorId,
+      businessId: scope.businessId,
       buyerPhone: input.buyerPhone,
     });
     if (existing) {
@@ -57,7 +57,6 @@ export async function upsertBuyerInvite(
       return { ok: true, invite: toDTO(existing), created: false };
     }
     const doc = await BuyerInvite.create({
-      vendorId: scope.vendorId,
       businessId: scope.businessId,
       buyerId: input.buyerId || null,
       buyerName: input.buyerName,

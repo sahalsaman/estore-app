@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { updateOrderStatusAction } from "@/actions/orders";
 import type { OrderStatus, PaymentStatus } from "@/models/Order";
 
-const PAYMENT_OPTIONS: PaymentStatus[] = ["pending", "paid", "failed"];
+const PAYMENT_OPTIONS: PaymentStatus[] = ["pending", "credit", "paid", "failed"];
 const ORDER_OPTIONS: OrderStatus[] = [
   "placed",
   "accepted",

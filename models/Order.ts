@@ -1,6 +1,6 @@
 import { Schema, model, models, type Model, type Types } from "mongoose";
 
-export type PaymentStatus = "pending" | "paid" | "failed";
+export type PaymentStatus = "pending" | "credit" | "paid" | "failed";
 export type OrderStatus =
   | "placed"
   | "accepted"
@@ -21,7 +21,6 @@ export interface IOrderItem {
 
 export interface IOrder {
   _id: Types.ObjectId;
-  vendorId: Types.ObjectId;
   businessId: Types.ObjectId;
   buyerId?: Types.ObjectId | null;
   buyerName: string;
@@ -50,7 +49,6 @@ const OrderItemSchema = new Schema<IOrderItem>(
 
 const OrderSchema = new Schema<IOrder>(
   {
-    vendorId: { type: Schema.Types.ObjectId, ref: "Vendor", required: true, index: true },
     businessId: { type: Schema.Types.ObjectId, ref: "Business", required: true, index: true },
     buyerId: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
     buyerName: { type: String, required: true, trim: true },

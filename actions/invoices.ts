@@ -2,20 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 
-import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
-import { requireRole } from "@/lib/dal";
+import { requireVendorBusinessId } from "@/lib/dal";
 import { generateInvoiceForOrder } from "@/services/invoices";
 
 export async function generateInvoiceAction(orderId: string) {
-  const session = await requireRole("vendor");
-  await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId })
-    .select("_id businessId")
-    .lean();
-  if (!vendor) return { ok: false as const, message: "Vendor not found" };
+  const businessId = await requireVendorBusinessId();
+  if (!businessId) return { ok: false as const, message: "No business linked" };
 
-  const res = await generateInvoiceForOrder(vendor._id, vendor.businessId, orderId);
+  const res = await generateInvoiceForOrder(businessId, orderId);
   if (!res.ok) return { ok: false as const, message: res.reason };
 
   revalidatePath("/business/orders");

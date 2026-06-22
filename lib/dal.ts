@@ -20,3 +20,11 @@ export const requireRole = cache(async (...roles: UserRole[]): Promise<SessionPa
 });
 
 export const getOptionalSession = cache(async () => readSession());
+
+// Trust root for vendor (seller) scoping: the signed session carries the
+// owner/team-member's businessId. Every seller-scoped query keys off this.
+// Returns null when the vendor session has no business linked.
+export const requireVendorBusinessId = cache(async (): Promise<string | null> => {
+  const session = await requireRole("vendor");
+  return session.businessId ?? null;
+});

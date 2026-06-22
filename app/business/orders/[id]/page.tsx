@@ -14,7 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { requireRole } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { getOrderDetail } from "@/services/orders";
@@ -27,11 +26,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  if (!vendor) notFound();
+  const businessId = session.businessId;
+  if (!businessId) notFound();
   const [order, invoice] = await Promise.all([
-    getOrderDetail(vendor._id, id),
-    getInvoiceForOrder(vendor._id, id),
+    getOrderDetail(businessId, id),
+    getInvoiceForOrder(businessId, id),
   ]);
   if (!order) notFound();
 

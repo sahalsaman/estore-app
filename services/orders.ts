@@ -17,7 +17,7 @@ export type OrderItemInput = {
 
 export type OrderDTO = {
   id: string;
-  vendorId: string;
+  businessId: string;
   createdAt: string;
   buyerName: string;
   buyerPhone: string;
@@ -45,7 +45,6 @@ export type OrderDetailDTO = OrderDTO & {
 };
 
 export type CreateOrderInput = {
-  vendorId: Types.ObjectId | string;
   businessId: Types.ObjectId | string;
   buyerId?: Types.ObjectId | string | null;
   buyerName: string;
@@ -65,7 +64,7 @@ function summarize(
 function toDTO(doc: IOrder): OrderDTO {
   return {
     id: doc._id.toString(),
-    vendorId: doc.vendorId.toString(),
+    businessId: doc.businessId.toString(),
     createdAt: doc.createdAt.toISOString(),
     buyerName: doc.buyerName,
     buyerPhone: doc.buyerPhone,
@@ -77,9 +76,9 @@ function toDTO(doc: IOrder): OrderDTO {
   };
 }
 
-export async function listOrders(vendorId: Types.ObjectId | string): Promise<OrderDTO[]> {
+export async function listOrders(businessId: Types.ObjectId | string): Promise<OrderDTO[]> {
   await connectDB();
-  const docs = await Order.find({ vendorId }).sort({ createdAt: -1 }).lean<IOrder[]>();
+  const docs = await Order.find({ businessId }).sort({ createdAt: -1 }).lean<IOrder[]>();
   return docs.map(toDTO);
 }
 
@@ -92,9 +91,9 @@ export type VendorBuyer = {
 };
 
 export const listVendorBuyers = cache(
-  async (vendorId: Types.ObjectId | string): Promise<VendorBuyer[]> => {
+  async (businessId: Types.ObjectId | string): Promise<VendorBuyer[]> => {
     await connectDB();
-    const id = typeof vendorId === "string" ? new mongoose.Types.ObjectId(vendorId) : vendorId;
+    const id = typeof businessId === "string" ? new mongoose.Types.ObjectId(businessId) : businessId;
     const [rows, invites] = await Promise.all([
       Order.aggregate<{
         _id: string;
@@ -102,7 +101,7 @@ export const listVendorBuyers = cache(
         orderCount: number;
         totalSpent: number;
       }>([
-        { $match: { vendorId: id, buyerPhone: { $nin: [null, ""] } } },
+        { $match: { businessId: id, buyerPhone: { $nin: [null, ""] } } },
         {
           $group: {
             _id: "$buyerPhone",
@@ -112,7 +111,7 @@ export const listVendorBuyers = cache(
           },
         },
       ]),
-      BuyerInvite.find({ vendorId: id }).lean<IBuyerInvite[]>(),
+      BuyerInvite.find({ businessId: id }).lean<IBuyerInvite[]>(),
     ]);
 
     const map = new Map<string, VendorBuyer>();
@@ -146,22 +145,22 @@ export const listVendorBuyers = cache(
 );
 
 export async function listOrdersForBuyer(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   buyerPhone: string
 ): Promise<OrderDTO[]> {
   if (!buyerPhone) return [];
   await connectDB();
-  const docs = await Order.find({ vendorId, buyerPhone }).sort({ createdAt: -1 }).lean<IOrder[]>();
+  const docs = await Order.find({ businessId, buyerPhone }).sort({ createdAt: -1 }).lean<IOrder[]>();
   return docs.map(toDTO);
 }
 
 export async function getOrderDetail(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   orderId: string
 ): Promise<OrderDetailDTO | null> {
   if (!mongoose.isValidObjectId(orderId)) return null;
   await connectDB();
-  const doc = await Order.findOne({ _id: orderId, vendorId }).lean<IOrder>();
+  const doc = await Order.findOne({ _id: orderId, businessId }).lean<IOrder>();
   if (!doc) return null;
   return {
     ...toDTO(doc),
@@ -180,7 +179,7 @@ export async function getOrderDetail(
 }
 
 export async function updateOrderStatus(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   orderId: string,
   patch: { paymentStatus?: PaymentStatus; orderStatus?: OrderStatus }
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
@@ -190,7 +189,7 @@ export async function updateOrderStatus(
   if (patch.orderStatus) set.orderStatus = patch.orderStatus;
   if (Object.keys(set).length === 0) return { ok: false, reason: "Nothing to update" };
   await connectDB();
-  const res = await Order.updateOne({ _id: orderId, vendorId }, { $set: set });
+  const res = await Order.updateOne({ _id: orderId, businessId }, { $set: set });
   if (res.matchedCount === 0) return { ok: false, reason: "Order not found" };
   return { ok: true };
 }
@@ -211,7 +210,7 @@ function lineKey(productId: string, variantId?: string | null): string {
 // Take `amount` units, scoped to a variant when present, keeping the product
 // rollup stock in sync. Returns false when there isn't enough stock.
 async function takeStock(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   productId: string,
   variantId: string | null,
   amount: number
@@ -220,7 +219,7 @@ async function takeStock(
     const res = await Product.updateOne(
       {
         _id: productId,
-        vendorId,
+        businessId,
         variants: { $elemMatch: { _id: variantId, stock: { $gte: amount } } },
       },
       { $inc: { "variants.$.stock": -amount, stock: -amount } }
@@ -228,7 +227,7 @@ async function takeStock(
     return res.matchedCount > 0;
   }
   const res = await Product.updateOne(
-    { _id: productId, vendorId, stock: { $gte: amount } },
+    { _id: productId, businessId, stock: { $gte: amount } },
     { $inc: { stock: -amount } }
   );
   return res.matchedCount > 0;
@@ -236,30 +235,30 @@ async function takeStock(
 
 // Give `amount` units back (best-effort), variant-scoped when present.
 async function returnStock(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   productId: string,
   variantId: string | null,
   amount: number
 ): Promise<void> {
   if (variantId) {
     await Product.updateOne(
-      { _id: productId, vendorId, "variants._id": variantId },
+      { _id: productId, businessId, "variants._id": variantId },
       { $inc: { "variants.$.stock": amount, stock: amount } }
     );
   } else {
-    await Product.updateOne({ _id: productId, vendorId }, { $inc: { stock: amount } });
+    await Product.updateOne({ _id: productId, businessId }, { $inc: { stock: amount } });
   }
 }
 
 export async function updateOrderItems(
-  vendorId: Types.ObjectId | string,
+  businessId: Types.ObjectId | string,
   orderId: string,
   updates: OrderItemQuantityUpdate[]
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   if (!mongoose.isValidObjectId(orderId)) return { ok: false, reason: "Invalid order id" };
   await connectDB();
 
-  const order = await Order.findOne({ _id: orderId, vendorId });
+  const order = await Order.findOne({ _id: orderId, businessId });
   if (!order) return { ok: false, reason: "Order not found" };
 
   const wanted = new Map<string, { quantity: number; included: boolean }>();
@@ -299,10 +298,10 @@ export async function updateOrderItems(
   // Reserve additional stock first; if any fails, roll back the ones already taken.
   const applied: Delta[] = [];
   for (const op of takes) {
-    const ok = await takeStock(vendorId, op.productId, op.variantId, op.amount);
+    const ok = await takeStock(businessId, op.productId, op.variantId, op.amount);
     if (!ok) {
       for (const r of applied) {
-        await returnStock(vendorId, r.productId, r.variantId, r.amount);
+        await returnStock(businessId, r.productId, r.variantId, r.amount);
       }
       return { ok: false, reason: "Not enough stock for one or more items" };
     }
@@ -311,7 +310,7 @@ export async function updateOrderItems(
 
   // Return stock for any reductions (best-effort).
   for (const op of returns) {
-    await returnStock(vendorId, op.productId, op.variantId, op.amount);
+    await returnStock(businessId, op.productId, op.variantId, op.amount);
   }
 
   for (const item of order.items) {
@@ -335,9 +334,9 @@ export async function updateOrderItems(
   return { ok: true };
 }
 
-export async function countOrders(vendorId: Types.ObjectId | string): Promise<number> {
+export async function countOrders(businessId: Types.ObjectId | string): Promise<number> {
   await connectDB();
-  return Order.countDocuments({ vendorId });
+  return Order.countDocuments({ businessId });
 }
 
 export async function listOrdersByBuyerPhone(phone: string): Promise<OrderDTO[]> {
@@ -368,7 +367,6 @@ export async function createOrder(
 
   try {
     const doc = await Order.create({
-      vendorId: input.vendorId,
       businessId: input.businessId,
       buyerId: input.buyerId ?? null,
       buyerName: input.buyerName,

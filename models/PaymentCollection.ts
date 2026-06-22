@@ -4,7 +4,6 @@ export type PaymentMethod = "cash" | "upi" | "bank_transfer" | "cheque" | "other
 
 export interface IPaymentCollection {
   _id: Types.ObjectId;
-  vendorId: Types.ObjectId;
   businessId: Types.ObjectId;
   buyerId?: Types.ObjectId | null;
   buyerName: string;
@@ -22,7 +21,6 @@ export interface IPaymentCollection {
 
 const PaymentCollectionSchema = new Schema<IPaymentCollection>(
   {
-    vendorId: { type: Schema.Types.ObjectId, ref: "Vendor", required: true, index: true },
     businessId: { type: Schema.Types.ObjectId, ref: "Business", required: true, index: true },
     buyerId: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
     buyerName: { type: String, required: true, trim: true },

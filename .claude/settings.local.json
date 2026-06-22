@@ -1,7 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"started dev, pid $!\")",
+      "Bash(grep -q \"Ready\\\\|Local:\\\\|started server\" /tmp/estore-dev.log)",
+      "Bash(break)",
+      "Read(//private/tmp/**)",
+      "Bash(cp /tmp/mint.mjs ./_mint.mjs)",
+      "Bash(node --env-file=.env.local ./_mint.mjs)",
+      "Bash(grep -q \"Ready\" /tmp/estore-3002.log)",
+      "Bash(curl -s -H 'Cookie: wh_session=__TRACKED_VAR__' http://localhost:3002/business/dashboard -o /tmp/p3002.html -w 'http=%{http_code}\\\\n')",
+      "Read(//tmp/**)",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P)",
+      "Bash(awk '{print $1, $2, $9}')",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(echo \"started $!\")",
+      "Bash(tee /tmp/eport.txt)",
+      "Bash(mkdir -p \"app/account/store\")",
+      "Bash(git mv *)",
+      "Bash(mv \"app/account/sellers/[slug]\" \"app/account/store/[slug]\")",
+      "Bash(grep -rn \"/account/sellers/\\\\${\" app actions)"
     ]
   }
 }

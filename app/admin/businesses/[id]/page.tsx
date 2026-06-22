@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { connectDB } from "@/lib/db";
 import { Business } from "@/models/Business";
-import { Vendor } from "@/models/Vendor";
+import { User } from "@/models/User";
 import { Product } from "@/models/Product";
 import { Order } from "@/models/Order";
 import { formatDate } from "@/lib/utils";
@@ -18,7 +18,7 @@ export default async function BusinessDetailPage({ params }: { params: Promise<{
   if (!business) notFound();
 
   const [vendors, productCount, orderCount] = await Promise.all([
-    Vendor.find({ businessId: id }).lean(),
+    User.find({ businessId: id, role: "vendor" }).lean(),
     Product.countDocuments({ businessId: id }),
     Order.countDocuments({ businessId: id }),
   ]);

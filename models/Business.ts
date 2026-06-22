@@ -8,6 +8,9 @@ export interface IBusiness {
   address?: string;
   phone?: string;
   ownerId: Types.ObjectId;
+  teamMembers?: Types.ObjectId[];
+  verified: boolean;
+  role: "buyer" | "seller";
   status: "active" | "disabled";
   createdAt: Date;
   updatedAt: Date;
@@ -21,6 +24,9 @@ const BusinessSchema = new Schema<IBusiness>(
     address: String,
     phone: String,
     ownerId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    teamMembers: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    role: { type: String, enum: ["buyer", "seller"], default: "buyer" },
+    verified: { type: Boolean, default: false },
     status: { type: String, enum: ["active", "disabled"], default: "active" },
   },
   { timestamps: true }

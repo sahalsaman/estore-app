@@ -8,7 +8,6 @@ import { z } from "zod";
 import { connectDB } from "@/lib/db";
 import { User } from "@/models/User";
 import { Business } from "@/models/Business";
-import { Vendor } from "@/models/Vendor";
 import { createSession, deleteSession } from "@/lib/session";
 import { uniqueBusinessSlug } from "@/lib/slug";
 
@@ -47,10 +46,16 @@ export async function vendorSignupAction(_prev: AuthState, formData: FormData): 
 
   const user = await User.create({ name, email, password: hashed, role: "vendor" });
   const slug = await uniqueBusinessSlug(businessName);
-  const business = await Business.create({ name: businessName, slug, phone, address, ownerId: user._id });
+  const business = await Business.create({
+    name: businessName,
+    slug,
+    phone,
+    address,
+    ownerId: user._id,
+    role: "seller",
+  });
   user.businessId = business._id;
   await user.save();
-  await Vendor.create({ userId: user._id, businessId: business._id });
 
   await createSession({
     userId: user._id.toString(),

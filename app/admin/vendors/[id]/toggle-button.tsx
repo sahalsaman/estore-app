@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { toggleVendorStatus } from "@/actions/admin";
 
-export function ToggleVendorButton({ vendorId, status }: { vendorId: string; status: "active" | "disabled" }) {
+export function ToggleVendorButton({ businessId, status }: { businessId: string; status: "active" | "disabled" }) {
   const [pending, start] = useTransition();
   return (
     <Button
@@ -13,7 +13,7 @@ export function ToggleVendorButton({ vendorId, status }: { vendorId: string; sta
       disabled={pending}
       onClick={() =>
         start(async () => {
-          const res = await toggleVendorStatus(vendorId);
+          const res = await toggleVendorStatus(businessId);
           if (res.ok) toast.success(`Vendor ${res.status === "active" ? "enabled" : "disabled"}`);
           else toast.error(res.message);
         })

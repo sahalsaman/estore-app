@@ -7,10 +7,8 @@ import mongoose from "mongoose";
 import { z } from "zod";
 
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { Business } from "@/models/Business";
-import { User } from "@/models/User";
-import { Buyer } from "@/models/Buyer";
+import { ensureBuyer } from "@/services/buyers";
 import { decrementStocks, getProduct } from "@/services/products";
 import {
   createOrder,
@@ -20,7 +18,9 @@ import {
 } from "@/services/orders";
 import { generateInvoiceForOrder, getInvoiceForOrder } from "@/services/invoices";
 import type { OrderStatus, PaymentStatus } from "@/models/Order";
-import { requireRole } from "@/lib/dal";
+import { requireRole, requireVendorBusinessId } from "@/lib/dal";
+import { getBuyerProfile } from "@/services/buyer-portal";
+import { User } from "@/models/User";
 import type { CartItem } from "@/types";
 
 const PAYMENT_STATUSES: PaymentStatus[] = ["pending", "paid", "failed"];
@@ -35,18 +35,18 @@ const ORDER_STATUSES: OrderStatus[] = [
 
 const CART_COOKIE = "wh_cart";
 
-type Cart = { vendorId: string | null; items: CartItem[] };
+type Cart = { businessId: string | null; items: CartItem[] };
 
 async function readCart(): Promise<Cart> {
   const jar = await cookies();
   const raw = jar.get(CART_COOKIE)?.value;
-  if (!raw) return { vendorId: null, items: [] };
+  if (!raw) return { businessId: null, items: [] };
   try {
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.items)) return parsed as Cart;
-    return { vendorId: null, items: [] };
+    return { businessId: null, items: [] };
   } catch {
-    return { vendorId: null, items: [] };
+    return { businessId: null, items: [] };
   }
 }
 
@@ -60,16 +60,20 @@ async function writeCart(cart: Cart) {
   });
 }
 
-export async function getCartForVendor(vendorId: string): Promise<CartItem[]> {
+export async function getCartForBusiness(businessId: string): Promise<CartItem[]> {
   const cart = await readCart();
-  if (cart.vendorId !== vendorId) return [];
+  if (cart.businessId !== businessId) return [];
   return cart.items;
 }
 
-async function slugForVendor(vendorId: string): Promise<string | null> {
-  const vendor = await Vendor.findById(vendorId).select("businessId").lean();
-  if (!vendor) return null;
-  const business = await Business.findById(vendor.businessId).select("slug").lean();
+// The whole cart, regardless of which store it belongs to. Used by the buyer
+// module (/account/cart) where the buyer isn't on a specific store page.
+export async function getCart(): Promise<Cart> {
+  return readCart();
+}
+
+async function slugForBusiness(businessId: string): Promise<string | null> {
+  const business = await Business.findById(businessId).select("slug").lean();
   return business?.slug ?? null;
 }
 
@@ -82,11 +86,11 @@ function sameLine(c: CartItem, productId: string, variantId?: string | null): bo
 // Validate a set of {variantId, quantity} lines for one product against fresh
 // data and turn them into cart items.
 async function resolveCartLines(
-  vendorId: string,
+  businessId: string,
   productId: string,
   lines: { variantId?: string | null; quantity: number }[]
 ): Promise<{ ok: true; items: CartItem[] } | { ok: false; message: string }> {
-  const product = await getProduct(vendorId, productId);
+  const product = await getProduct(businessId, productId);
   if (!product || product.status !== "active") {
     return { ok: false, message: "Product unavailable" };
   }
@@ -103,17 +107,17 @@ async function resolveCartLines(
         productId,
         variantId: v.id,
         variantLabel: v.label,
-        vendorId,
+        businessId,
         name: product.name,
         price: v.wholesalePrice,
-        image: product.images[0],
+        image: v.image ?? product.images[0],
         quantity: qty,
       });
     } else {
       if (product.stock <= 0) return { ok: false, message: "Out of stock" };
       items.push({
         productId,
-        vendorId,
+        businessId,
         name: product.name,
         price: product.wholesalePrice,
         image: product.images[0],
@@ -126,26 +130,26 @@ async function resolveCartLines(
 }
 
 async function addLinesToCart(
-  vendorIdHint: string,
+  businessIdHint: string,
   productId: string,
   lines: { variantId?: string | null; quantity: number }[]
 ) {
-  if (!mongoose.isValidObjectId(vendorIdHint)) return { ok: false as const, message: "Invalid store" };
+  if (!mongoose.isValidObjectId(businessIdHint)) return { ok: false as const, message: "Invalid store" };
   await connectDB();
-  const vendor = await Vendor.findById(vendorIdHint);
-  if (!vendor || vendor.status !== "active") return { ok: false as const, message: "Store unavailable" };
+  const business = await Business.findOne({ _id: businessIdHint, role: "seller" });
+  if (!business || business.status !== "active") return { ok: false as const, message: "Store unavailable" };
 
-  const vendorId = vendor._id.toString();
-  const resolved = await resolveCartLines(vendorId, productId, lines);
+  const businessId = business._id.toString();
+  const resolved = await resolveCartLines(businessId, productId, lines);
   if (!resolved.ok) return { ok: false as const, message: resolved.message };
 
   let cart = await readCart();
   let switched = false;
-  if (cart.vendorId && cart.vendorId !== vendorId && cart.items.length > 0) {
-    cart = { vendorId, items: [] };
+  if (cart.businessId && cart.businessId !== businessId && cart.items.length > 0) {
+    cart = { businessId, items: [] };
     switched = true;
   } else {
-    cart.vendorId = vendorId;
+    cart.businessId = businessId;
   }
 
   for (const item of resolved.items) {
@@ -155,31 +159,33 @@ async function addLinesToCart(
   }
 
   await writeCart(cart);
-  const slug = await slugForVendor(vendorId);
+  const slug = await slugForBusiness(businessId);
   if (slug) {
     revalidatePath(`/store/${slug}`);
     revalidatePath(`/store/${slug}/cart`);
+    revalidatePath(`/account/store/${slug}`);
   }
+  revalidatePath("/account/cart");
   return { ok: true as const, count: cart.items.reduce((s, c) => s + c.quantity, 0), switched };
 }
 
 export async function addToCartAction(
   productId: string,
-  vendorIdHint: string,
+  businessIdHint: string,
   quantity = 1,
   variantId?: string
 ) {
-  return addLinesToCart(vendorIdHint, productId, [{ variantId, quantity }]);
+  return addLinesToCart(businessIdHint, productId, [{ variantId, quantity }]);
 }
 
 export async function addVariantsToCartAction(
   productId: string,
-  vendorIdHint: string,
+  businessIdHint: string,
   lines: { variantId: string; quantity: number }[]
 ) {
   const wanted = (lines ?? []).filter((l) => l.quantity > 0);
   if (wanted.length === 0) return { ok: false as const, message: "Enter a quantity for at least one option" };
-  return addLinesToCart(vendorIdHint, productId, wanted);
+  return addLinesToCart(businessIdHint, productId, wanted);
 }
 
 export async function updateCartItemAction(
@@ -189,16 +195,17 @@ export async function updateCartItemAction(
 ) {
   const cart = await readCart();
   const next: Cart = {
-    vendorId: cart.vendorId,
+    businessId: cart.businessId,
     items:
       quantity <= 0
         ? cart.items.filter((c) => !sameLine(c, productId, variantId))
         : cart.items.map((c) => (sameLine(c, productId, variantId) ? { ...c, quantity } : c)),
   };
-  if (next.items.length === 0) next.vendorId = null;
+  if (next.items.length === 0) next.businessId = null;
   await writeCart(next);
-  if (cart.vendorId) {
-    const slug = await slugForVendor(cart.vendorId);
+  revalidatePath("/account/cart");
+  if (cart.businessId) {
+    const slug = await slugForBusiness(cart.businessId);
     if (slug) revalidatePath(`/store/${slug}/cart`);
   }
   return { ok: true as const };
@@ -207,16 +214,17 @@ export async function updateCartItemAction(
 export async function removeFromCartAction(productId: string, variantId?: string) {
   const cart = await readCart();
   const items = cart.items.filter((c) => !sameLine(c, productId, variantId));
-  await writeCart({ vendorId: items.length ? cart.vendorId : null, items });
-  if (cart.vendorId) {
-    const slug = await slugForVendor(cart.vendorId);
+  await writeCart({ businessId: items.length ? cart.businessId : null, items });
+  revalidatePath("/account/cart");
+  if (cart.businessId) {
+    const slug = await slugForBusiness(cart.businessId);
     if (slug) revalidatePath(`/store/${slug}/cart`);
   }
   return { ok: true as const };
 }
 
 const CheckoutSchema = z.object({
-  vendorId: z.string().min(1),
+  businessId: z.string().min(1),
   name: z.string().min(2, "Name is required"),
   phone: z.string().min(7, "Mobile number is required"),
   address: z.string().optional(),
@@ -227,45 +235,35 @@ export type CheckoutState =
   | { error?: string; fieldErrors?: Record<string, string[]> }
   | undefined;
 
-export async function placeOrderAction(_prev: CheckoutState, formData: FormData): Promise<CheckoutState> {
-  const parsed = CheckoutSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
-  }
-  const { vendorId, name, phone, address } = parsed.data;
-  if (!mongoose.isValidObjectId(vendorId)) return { error: "Invalid store" };
+type VerifiedLine = {
+  productId: string;
+  variantId: string | null;
+  variantLabel: string;
+  name: string;
+  price: number;
+  quantity: number;
+};
 
-  const cart = await readCart();
-  if (cart.vendorId !== vendorId || cart.items.length === 0) {
-    return { error: "Your cart is empty" };
-  }
-
-  await connectDB();
-  const vendor = await Vendor.findById(vendorId);
-  if (!vendor || vendor.status !== "active") return { error: "Store is unavailable" };
-  const business = await Business.findById(vendor.businessId).select("slug").lean();
-  const slug = business?.slug;
-
-  const verified: {
-    productId: string;
-    variantId: string | null;
-    variantLabel: string;
-    name: string;
-    price: number;
-    quantity: number;
-  }[] = [];
-  for (const item of cart.items) {
-    const fresh = await getProduct(vendor._id, item.productId);
+// Re-check every cart line against fresh product/variant data at checkout time:
+// availability, the chosen variant, and stock. Returns the trustworthy lines or
+// the first problem found.
+async function verifyCartItems(
+  businessId: string,
+  items: CartItem[]
+): Promise<{ ok: true; verified: VerifiedLine[] } | { ok: false; error: string }> {
+  const verified: VerifiedLine[] = [];
+  for (const item of items) {
+    const fresh = await getProduct(businessId, item.productId);
     if (!fresh || fresh.status !== "active") {
-      return { error: `"${item.name}" is no longer available` };
+      return { ok: false, error: `"${item.name}" is no longer available` };
     }
     if (fresh.hasVariants) {
       const v = item.variantId ? fresh.variants.find((x) => x.id === item.variantId) : undefined;
       if (!v || v.status !== "active") {
-        return { error: `An option of "${fresh.name}" is no longer available` };
+        return { ok: false, error: `An option of "${fresh.name}" is no longer available` };
       }
       if (v.stock < item.quantity) {
-        return { error: `Only ${v.stock} of "${fresh.name} (${v.label})" in stock` };
+        return { ok: false, error: `Only ${v.stock} of "${fresh.name} (${v.label})" in stock` };
       }
       verified.push({
         productId: fresh.id,
@@ -277,7 +275,7 @@ export async function placeOrderAction(_prev: CheckoutState, formData: FormData)
       });
     } else {
       if (fresh.stock < item.quantity) {
-        return { error: `Only ${fresh.stock} of "${fresh.name}" in stock` };
+        return { ok: false, error: `Only ${fresh.stock} of "${fresh.name}" in stock` };
       }
       verified.push({
         productId: fresh.id,
@@ -289,18 +287,35 @@ export async function placeOrderAction(_prev: CheckoutState, formData: FormData)
       });
     }
   }
+  return { ok: true, verified };
+}
 
-  let buyer = await User.findOne({ role: "buyer", phone });
-  if (!buyer) {
-    buyer = await User.create({ name, phone, role: "buyer" });
-    await Buyer.create({ userId: buyer._id, address });
-  } else if (address) {
-    await Buyer.updateOne({ userId: buyer._id }, { address }, { upsert: true });
+export async function placeOrderAction(_prev: CheckoutState, formData: FormData): Promise<CheckoutState> {
+  const parsed = CheckoutSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
+  }
+  const { businessId, name, phone, address } = parsed.data;
+  if (!mongoose.isValidObjectId(businessId)) return { error: "Invalid store" };
+
+  const cart = await readCart();
+  if (cart.businessId !== businessId || cart.items.length === 0) {
+    return { error: "Your cart is empty" };
   }
 
+  await connectDB();
+  const business = await Business.findOne({ _id: businessId, role: "seller" });
+  if (!business || business.status !== "active") return { error: "Store is unavailable" };
+  const slug = business.slug;
+
+  const check = await verifyCartItems(businessId, cart.items);
+  if (!check.ok) return { error: check.error };
+  const verified = check.verified;
+
+  const buyer = await ensureBuyer({ name, phone, address });
+
   const result = await createOrder({
-    vendorId: vendor._id,
-    businessId: vendor.businessId,
+    businessId,
     buyerId: buyer._id,
     buyerName: name,
     buyerPhone: phone,
@@ -311,11 +326,11 @@ export async function placeOrderAction(_prev: CheckoutState, formData: FormData)
   }
 
   await decrementStocks(
-    vendor._id,
+    businessId,
     verified.map((v) => ({ id: v.productId, variantId: v.variantId, quantity: v.quantity }))
   ).catch(() => undefined);
 
-  await writeCart({ vendorId: null, items: [] });
+  await writeCart({ businessId: null, items: [] });
   if (slug) {
     revalidatePath(`/store/${slug}`);
     revalidatePath(`/store/${slug}/cart`);
@@ -324,14 +339,74 @@ export async function placeOrderAction(_prev: CheckoutState, formData: FormData)
   redirect(`/store?placed=1`);
 }
 
+const BuyerCheckoutSchema = z.object({
+  address: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// Checkout from inside the buyer module (/account/cart). The buyer is signed in,
+// so name/phone come from the session/profile rather than a form — they only
+// confirm a delivery address. Redirects to the placed order on success.
+export async function placeBuyerOrderAction(_prev: CheckoutState, formData: FormData): Promise<CheckoutState> {
+  const session = await requireRole("buyer");
+  const parsed = BuyerCheckoutSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { fieldErrors: z.flattenError(parsed.error).fieldErrors };
+  }
+
+  const profile = await getBuyerProfile(session.userId);
+  if (!profile?.phone) return { error: "Your buyer profile is incomplete" };
+
+  const cart = await readCart();
+  if (!cart.businessId || cart.items.length === 0) {
+    return { error: "Your cart is empty" };
+  }
+
+  await connectDB();
+  const business = await Business.findOne({ _id: cart.businessId, role: "seller" });
+  if (!business || business.status !== "active") return { error: "Store is unavailable" };
+
+  const check = await verifyCartItems(cart.businessId, cart.items);
+  if (!check.ok) return { error: check.error };
+  const verified = check.verified;
+
+  const address = parsed.data.address?.trim() || profile.address || undefined;
+  const buyer = await ensureBuyer({ name: profile.name, phone: profile.phone, address });
+
+  const result = await createOrder({
+    businessId: cart.businessId,
+    buyerId: buyer._id,
+    buyerName: profile.name,
+    buyerPhone: profile.phone,
+    items: verified,
+  });
+  if (!result.ok) {
+    return { error: `Couldn't save the order: ${result.reason}` };
+  }
+
+  await decrementStocks(
+    cart.businessId,
+    verified.map((v) => ({ id: v.productId, variantId: v.variantId, quantity: v.quantity }))
+  ).catch(() => undefined);
+
+  await writeCart({ businessId: null, items: [] });
+  if (business.slug) {
+    revalidatePath(`/store/${business.slug}`);
+    revalidatePath(`/store/${business.slug}/cart`);
+  }
+  revalidatePath("/account/cart");
+  revalidatePath("/account/orders");
+  revalidatePath("/account");
+  redirect(`/account/orders/${result.order.id}`);
+}
+
 export async function updateOrderStatusAction(
   orderId: string,
   patch: { paymentStatus?: string; orderStatus?: string }
 ) {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
+  if (!businessId) return { ok: false as const, message: "No business linked" };
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  if (!vendor) return { ok: false as const, message: "Vendor not found" };
 
   const paymentStatus =
     patch.paymentStatus && PAYMENT_STATUSES.includes(patch.paymentStatus as PaymentStatus)
@@ -347,16 +422,14 @@ export async function updateOrderStatusAction(
   }
 
   if (orderStatus === "packed") {
-    const existing = await getInvoiceForOrder(vendor._id, orderId);
+    const existing = await getInvoiceForOrder(businessId, orderId);
     if (!existing) {
-      const vendorFull = await Vendor.findById(vendor._id).select("businessId").lean();
-      if (!vendorFull) return { ok: false as const, message: "Vendor not found" };
-      const inv = await generateInvoiceForOrder(vendor._id, vendorFull.businessId, orderId);
+      const inv = await generateInvoiceForOrder(businessId, orderId);
       if (!inv.ok) return { ok: false as const, message: inv.reason };
     }
   }
 
-  const res = await updateOrderStatus(vendor._id, orderId, { paymentStatus, orderStatus });
+  const res = await updateOrderStatus(businessId, orderId, { paymentStatus, orderStatus });
   if (!res.ok) return { ok: false as const, message: res.reason };
 
   revalidatePath("/business/orders");
@@ -366,20 +439,17 @@ export async function updateOrderStatusAction(
 }
 
 export async function markOrderAsPackedAction(orderId: string) {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
+  if (!businessId) return { ok: false as const, message: "No business linked" };
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId })
-    .select("_id businessId")
-    .lean();
-  if (!vendor) return { ok: false as const, message: "Vendor not found" };
 
-  const existing = await getInvoiceForOrder(vendor._id, orderId);
+  const existing = await getInvoiceForOrder(businessId, orderId);
   if (!existing) {
-    const inv = await generateInvoiceForOrder(vendor._id, vendor.businessId, orderId);
+    const inv = await generateInvoiceForOrder(businessId, orderId);
     if (!inv.ok) return { ok: false as const, message: inv.reason };
   }
 
-  const res = await updateOrderStatus(vendor._id, orderId, { orderStatus: "packed" });
+  const res = await updateOrderStatus(businessId, orderId, { orderStatus: "packed" });
   if (!res.ok) return { ok: false as const, message: res.reason };
 
   revalidatePath("/business/orders");
@@ -392,12 +462,11 @@ export async function updateOrderItemsAction(
   orderId: string,
   updates: OrderItemQuantityUpdate[]
 ) {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
+  if (!businessId) return { ok: false as const, message: "No business linked" };
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).select("_id").lean();
-  if (!vendor) return { ok: false as const, message: "Vendor not found" };
 
-  const res = await updateOrderItems(vendor._id, orderId, updates);
+  const res = await updateOrderItems(businessId, orderId, updates);
   if (!res.ok) return { ok: false as const, message: res.reason };
 
   revalidatePath("/business/orders");
@@ -409,12 +478,9 @@ export async function createManualOrderAction(input: {
   buyerPhone: string;
   items: { productId: string; variantId?: string | null; quantity: number }[];
 }) {
-  const session = await requireRole("vendor");
+  const businessId = await requireVendorBusinessId();
+  if (!businessId) return { ok: false as const, message: "No business linked" };
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId })
-    .select("_id businessId")
-    .lean();
-  if (!vendor) return { ok: false as const, message: "Vendor not found" };
 
   const phone = (input.buyerPhone ?? "").trim();
   if (!phone) return { ok: false as const, message: "Pick a buyer" };
@@ -438,7 +504,7 @@ export async function createManualOrderAction(input: {
     if (!Number.isFinite(it.quantity) || it.quantity < 1) {
       return { ok: false as const, message: "Quantity must be at least 1" };
     }
-    const fresh = await getProduct(vendor._id, it.productId);
+    const fresh = await getProduct(businessId, it.productId);
     if (!fresh || fresh.status !== "active") {
       return { ok: false as const, message: "One of the products is unavailable" };
     }
@@ -480,8 +546,7 @@ export async function createManualOrderAction(input: {
   }
 
   const created = await createOrder({
-    vendorId: vendor._id,
-    businessId: vendor.businessId,
+    businessId,
     buyerId: buyer._id,
     buyerName: buyer.name,
     buyerPhone: phone,
@@ -490,7 +555,7 @@ export async function createManualOrderAction(input: {
   if (!created.ok) return { ok: false as const, message: `Couldn't save order: ${created.reason}` };
 
   await decrementStocks(
-    vendor._id,
+    businessId,
     verified.map((v) => ({ id: v.productId, variantId: v.variantId, quantity: v.quantity }))
   ).catch(() => undefined);
 

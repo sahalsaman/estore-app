@@ -5,7 +5,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { Business } from "@/models/Business";
 
 type StoreCard = {
@@ -16,13 +15,12 @@ type StoreCard = {
 
 async function getStores(): Promise<StoreCard[]> {
   await connectDB();
-  const vendors = await Vendor.find({ status: "active" })
-    .populate({ path: "businessId", model: Business, select: "name address slug" })
+  const businesses = await Business.find({ role: "seller", status: "active" })
+    .select("name address slug")
     .lean();
   const result: StoreCard[] = [];
-  for (const v of vendors) {
-    const business = v.businessId as unknown as { name: string; address?: string; slug?: string } | null;
-    if (!business?.slug) continue;
+  for (const business of businesses) {
+    if (!business.slug) continue;
     result.push({
       slug: business.slug,
       businessName: business.name ?? "Unnamed store",
@@ -46,9 +44,14 @@ export default async function StoresListPage() {
             </div>
             <span className="font-semibold">order.store</span>
           </Link>
-          <Button variant="outline" asChild>
-            <Link href="/login">Seller sign in</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" asChild>
+              <Link href="/account">My account</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/login">Seller sign in</Link>
+            </Button>
+          </div>
         </div>
       </header>
 

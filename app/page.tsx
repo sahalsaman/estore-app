@@ -28,6 +28,9 @@ export default async function LandingPage() {
             <Button variant="ghost" asChild>
               <Link href="/login">Seller sign in</Link>
             </Button>
+                <Button variant="ghost" asChild>
+              <Link href="/buyer-login">Buyer sign in</Link>
+            </Button>
             <Button variant="brand" asChild>
               <Link href="/signup">Open your store</Link>
             </Button>

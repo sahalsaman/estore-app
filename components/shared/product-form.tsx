@@ -29,6 +29,7 @@ export type ProductFormInitial = {
   hasVariants?: boolean;
   optionNames?: string[];
   variants?: VariantInitial[];
+  variantImages?: { value: string; image: string }[];
 };
 
 type Cell = { price: string; wholesalePrice: string; stock: string; active: boolean };
@@ -122,6 +123,41 @@ export function ProductForm({
 
   const setCell = (key: string, patch: Partial<Cell>) =>
     setCells((prev) => ({ ...prev, [key]: { ...getCell(key), ...patch } }));
+
+  // ----- per-option-value images (e.g. one picture per colour) -----
+  const [imgs, setImgs] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    for (const vi of initial?.variantImages ?? []) m[vi.value] = vi.image;
+    return m;
+  });
+
+  // One row per distinct option value, labelled with its dimension name.
+  const imageRows = useMemo<{ name: string; value: string }[]>(() => {
+    const rows: { name: string; value: string }[] = [];
+    const seen = new Set<string>();
+    const push = (name: string, vals: string[]) => {
+      for (const v of vals) {
+        if (!seen.has(v)) {
+          seen.add(v);
+          rows.push({ name, value: v });
+        }
+      }
+    };
+    const n1 = name1.trim();
+    const n2 = name2.trim();
+    const v1 = splitValues(vals1);
+    const v2 = splitValues(vals2);
+    if (n1) push(n1, v1);
+    if (n2 && v2.length > 0) push(n2, v2);
+    return rows;
+  }, [name1, name2, vals1, vals2]);
+
+  const variantImagesJson = useMemo(() => {
+    const list = imageRows
+      .map((r) => ({ value: r.value, image: (imgs[r.value] ?? "").trim() }))
+      .filter((r) => r.image);
+    return JSON.stringify(list);
+  }, [imageRows, imgs]);
 
   const variantsJson = useMemo(() => {
     const list = combos.map((values) => {
@@ -283,8 +319,44 @@ export function ProductForm({
             </div>
           )}
           {e?.variantsJson && <p className="text-sm text-destructive">{e.variantsJson[0]}</p>}
+
+          {imageRows.length > 0 && (
+            <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+              <div>
+                <Label>Option images</Label>
+                <p className="text-xs text-muted-foreground">
+                  Add a picture per value (e.g. one per colour). Buyers see it when they pick that option.
+                  Leave blank to use the product image.
+                </p>
+              </div>
+              {imageRows.map((row) => {
+                const url = imgs[row.value] ?? "";
+                return (
+                  <div key={row.value} className="flex items-center gap-2">
+                    <div className="h-10 w-10 shrink-0 overflow-hidden rounded border bg-background">
+                      {url.trim() ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={url} alt="" className="h-full w-full object-cover" />
+                      ) : null}
+                    </div>
+                    <span className="w-24 shrink-0 truncate text-sm" title={`${row.name}: ${row.value}`}>
+                      {row.value}
+                    </span>
+                    <Input
+                      value={url}
+                      onChange={(ev) => setImgs((prev) => ({ ...prev, [row.value]: ev.target.value }))}
+                      placeholder="https://...jpg"
+                      className="h-9 flex-1"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <input type="hidden" name="optionNames" value={JSON.stringify(optionNames)} />
           <input type="hidden" name="variantsJson" value={variantsJson} />
+          <input type="hidden" name="variantImagesJson" value={variantImagesJson} />
         </div>
       )}
 

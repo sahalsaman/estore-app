@@ -16,7 +16,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/types";
 
-export function CartCheckout({ vendorId, items }: { vendorId: string; items: CartItem[] }) {
+export function CartCheckout({ businessId, items }: { businessId: string; items: CartItem[] }) {
   const [pending, start] = useTransition();
   const [state, action, submitting] = useActionState<CheckoutState, FormData>(placeOrderAction, undefined);
   const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
@@ -74,11 +74,16 @@ export function CartCheckout({ vendorId, items }: { vendorId: string; items: Car
       </div>
 
       <form action={action} className="space-y-4 p-6">
-        <input type="hidden" name="vendorId" value={vendorId} />
+        <input type="hidden" name="businessId" value={businessId} />
         <h3 className="text-lg font-semibold">Your details</h3>
         <p className="text-sm text-muted-foreground">No account needed — just leave your name and mobile so the vendor can reach you.</p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="name">Business name</Label>
+            <Input id="businessName" name="businessName" placeholder="C" />
+            {e?.name && <p className="text-sm text-destructive">{e.businessName[0]}</p>}
+          </div>
           <div className="space-y-2">
             <Label htmlFor="name">Your name</Label>
             <Input id="name" name="name" placeholder="Jane Retailer" />

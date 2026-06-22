@@ -9,13 +9,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { connectDB } from "@/lib/db";
-import { Vendor } from "@/models/Vendor";
 import { Business } from "@/models/Business";
 import { requireRole } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { listProducts } from "@/services/products";
 import { listOrders } from "@/services/orders";
 import { uniqueBusinessSlug } from "@/lib/slug";
+import { AddOrderDialog } from "../orders/add-order-dialog";
+import { loadOrderOptions } from "../orders/order-options";
 
 async function getOrigin() {
   const h = await headers();
@@ -27,9 +28,9 @@ async function getOrigin() {
 export default async function VendorDashboard() {
   const session = await requireRole("vendor");
   await connectDB();
-  const vendor = await Vendor.findOne({ userId: session.userId }).lean();
-  if (!vendor) return <p>Vendor profile missing.</p>;
-  const business = await Business.findById(vendor.businessId);
+  const businessId = session.businessId;
+  if (!businessId) return <p>Business missing.</p>;
+  const business = await Business.findById(businessId);
   if (!business) return <p>Business missing.</p>;
   if (!business.slug) {
     business.slug = await uniqueBusinessSlug(business.name, business._id.toString());
@@ -37,10 +38,11 @@ export default async function VendorDashboard() {
   }
   const slug = business.slug;
 
-  const [orders, products, origin] = await Promise.all([
-    listOrders(vendor._id),
-    listProducts(vendor._id),
+  const [orders, products, origin, orderOptions] = await Promise.all([
+    listOrders(businessId),
+    listProducts(businessId),
     getOrigin(),
+    loadOrderOptions(businessId),
   ]);
   const buyerSet = new Set(orders.map((o) => o.buyerPhone).filter(Boolean));
   const revenue = orders.reduce((s, o) => s + o.totalAmount, 0);
@@ -50,7 +52,11 @@ export default async function VendorDashboard() {
 
   return (
     <div>
-      <PageHeader title="Dashboard" description="Your store at a glance." />
+      <PageHeader
+        title="Dashboard"
+        description="Your store at a glance."
+        action={<AddOrderDialog buyers={orderOptions.buyers} products={orderOptions.products} />}
+      />
 
       <div className="mb-6">
         <StoreLinkCard url={storeUrl!} slug={slug} />
